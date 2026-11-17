@@ -54,6 +54,10 @@ export const IT_2026: TaxRules = {
     regionalSurchargeBands: [{ upTo: null, ratePct: 1.23 }],
     municipalSurchargePct: 0.8, // most large municipalities apply 0.8% (approx.)
     municipalExemptionThreshold: 0,
+    // Trattamento integrativo (DL 3/2020 art. 1 c.1, as amended by L. 234/2021 art. 1 c.3): 1,200 €/year if
+    // RC <= 15,000 and gross IRPEF > art. 13 c.1 deduction − 75 €. The 15k–28k partial case needs family/other
+    // deductions that are not modelled. Verified 2026-11-17 (informazionefiscale.it, TIR guide 2026).
+    supplementaryTreatment: { amount: 1200, incomeLimit: 15000, capacityMargin: 75 },
   },
   inps: {
     employeeRatePct: 9.19,
@@ -90,6 +94,9 @@ export const IT_2026: TaxRules = {
     maxCapitalSharePct: 50,
     minMembershipYears: 5,
     ritaMaxYearsEarly: 5,
+    ritaMaxYearsEarlyUnemployed: 10, // art. 11 c.4-bis D.Lgs. 252/2005: 10 years if unemployed for more than 24 months
+    redemptionAfterUnemployedYears: 4, // art. 14 c.2 lett. c D.Lgs. 252/2005: riscatto totale after > 48 months without work
+    redemptionBlockedYearsBeforeOldAge: 5, // not available in the 5 years before the old-age requirements (RITA applies)
   },
   investments: {
     capitalGainsPct: 26,
@@ -130,6 +137,7 @@ export const IT_2026: TaxRules = {
     { key: 'irpef2', label: 'Legge di Bilancio 2026 — misure fiscali (Confindustria)', url: 'https://public.confindustria.it/repository/2026/03/16160200/documenti-legge-di-bilancio-2026-analisi-Circolare-Legge-di-Bilancio-2026_analisi-delle-misure-fiscali.pdf' },
     { key: 'detrazioni', label: 'Detrazioni lavoro dipendente art. 13 TUIR', url: 'https://www.brocardi.it/testo-unico-imposte-redditi/titolo-i/capo-i/art13.html' },
     { key: 'cuneo', label: 'Cuneo fiscale strutturale (L. 207/2024)', url: 'https://cafinforma.it/detrazioni-lavoro-dipendente-2026/' },
+    { key: 'trattamentoIntegrativo', label: 'Trattamento integrativo (ex bonus Renzi) 2026', url: 'https://www.informazionefiscale.it/trattamento-integrativo-busta-paga-a-chi-quando-spetta' },
     { key: 'inps', label: 'Contributi INPS 2026: soglia 1% e massimale', url: 'https://www.informazionefiscale.it/contributi-INPS-2026-dipendenti-istruzioni-calcolo-importo' },
     { key: 'addizionali', label: 'Addizionali regionali IRPEF per scaglione', url: 'https://www.pmi.it/card/addizionali-irpef-regionali-per-ogni-scaglione-di-reddito/doc/20' },
     { key: 'premio', label: 'Premi di risultato 2026-2027: 1% fino a 5.000 €', url: 'https://www.fiscal-focus.it/quotidiano/il-quotidiano/articoli-fisco/premi-di-risultato-2026-come-detassare-fino-a-5-000-euro-senza-errori,3,183981' },

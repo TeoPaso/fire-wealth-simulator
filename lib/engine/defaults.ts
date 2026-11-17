@@ -109,12 +109,13 @@ export function createDefaultPlan(opts: DefaultPlanOptions = {}): Plan {
     pensionFund: {
       enabled: true,
       name: 'Fondo negoziale — comparto bilanciato',
-      expectedReturnPct: 4,
+      expectedReturnPct: 3.5, // COVIP: balanced lines returned ~2-3% net over 10 years
       volatilityPct: 8,
       costPct: 0.3,
       govBondSharePct: 40,
       equityCorrelation: 0.8,
       accessAge: 67,
+      accessMode: 'retirement',
       capitalSharePct: 50,
       annuityRatePct: 4.8,
     },
@@ -142,7 +143,7 @@ export function createExamplePlans(opts: { startYear?: number; now?: string } = 
   const prudent = createDefaultPlan({ ...opts, id: 'example-prudent', name: 'Prudente' });
   prudent.portfolio.assets[0].expectedReturnPct = 5;
   prudent.portfolio.assets[1].expectedReturnPct = 2.5;
-  prudent.pensionFund.expectedReturnPct = 3;
+  prudent.pensionFund.expectedReturnPct = 2.5;
   prudent.market.inflationPct = 2.5;
   prudent.spending.monthlyToday = 1650;
   prudent.statePension.realGdpGrowthPct = 0.5;
@@ -150,7 +151,7 @@ export function createExamplePlans(opts: { startYear?: number; now?: string } = 
   const optimistic = createDefaultPlan({ ...opts, id: 'example-optimistic', name: 'Ottimista' });
   optimistic.portfolio.assets[0].expectedReturnPct = 7;
   optimistic.portfolio.assets[1].expectedReturnPct = 3.5;
-  optimistic.pensionFund.expectedReturnPct = 4.5;
+  optimistic.pensionFund.expectedReturnPct = 4;
   optimistic.market.inflationPct = 1.8;
 
   return [base, prudent, optimistic];

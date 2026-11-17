@@ -73,6 +73,16 @@ export interface TaxRules {
     regionalSurchargeBands: RateBand[]; // addizionale regionale (progressive by band). Default: legal minimum 1.23% flat
     municipalSurchargePct: number; // addizionale comunale, flat on the whole taxable income
     municipalExemptionThreshold: number; // if taxable income <= threshold, municipal surcharge = 0
+    /**
+     * OPTIONAL (added by tax engine): trattamento integrativo (ex "bonus Renzi", DL 3/2020 art. 1 as amended by
+     * L. 234/2021): tax-free `amount` paid in payroll to employees with RC <= `incomeLimit` whose gross IRPEF exceeds
+     * the art. 13 c.1 deduction minus `capacityMargin`. Absent = not modelled.
+     */
+    supplementaryTreatment?: {
+      amount: number; // 1200
+      incomeLimit: number; // 15000
+      capacityMargin: number; // 75
+    };
   };
   inps: {
     employeeRatePct: number; // 9.19
@@ -109,6 +119,12 @@ export interface TaxRules {
     maxCapitalSharePct: number; // 50 at retirement
     minMembershipYears: number; // 5
     ritaMaxYearsEarly: number; // 5 (10 if unemployed > 24 months — modelled only as a user choice)
+    /** OPTIONAL (added by simulation engine): RITA window for the long-term unemployed (10). Absent = 2 × ritaMaxYearsEarly. */
+    ritaMaxYearsEarlyUnemployed?: number;
+    /** Riscatto totale per inoccupazione (art. 14 c.2 lett. c D.Lgs. 252/2005): allowed after MORE than 48 months → 4. */
+    redemptionAfterUnemployedYears: number;
+    /** The riscatto per inoccupazione is not allowed in the last N years before the old-age pension requirements → 5. */
+    redemptionBlockedYearsBeforeOldAge: number;
   };
   investments: {
     capitalGainsPct: number; // 26
@@ -139,6 +155,8 @@ export type WithdrawalStrategy = 'constantReal' | 'guardrails';
 export type StatePensionMode = 'estimate' | 'contributivo';
 export type RetirementMode = 'auto' | 'fixedAge';
 export type VoluntaryPensionMode = 'none' | 'fillCap' | 'fixed';
+/** How the pension fund is accessed (see Plan.pensionFund.accessMode). */
+export type PensionFundAccessMode = 'retirement' | 'rita' | 'redemption';
 
 export interface CareerPhase {
   id: string;
@@ -277,6 +295,16 @@ export interface Plan {
     equityCorrelation: number;
     /** Age at which the position is redeemed (default = state-pension age; RITA allows up to 5/10 years earlier). */
     accessAge: number;
+    /**
+     * How the position is accessed:
+     * - 'retirement': ordinary benefit at max(accessAge, retirement age): capital share (≤ 50%) + annuity;
+     * - 'rita': Rendita Integrativa Temporanea Anticipata — equal yearly instalments from accessAge until the
+     *   state-pension age (accessAge ≥ oldAgeAge − ritaMaxYearsEarly, or − 10 years if unemployed > 24 months);
+     * - 'redemption': riscatto totale per inoccupazione — 100% lump sum `redemptionAfterUnemployedYears` years after
+     *   stopping work, taxed like a benefit (15% → 9%); not allowed within `redemptionBlockedYearsBeforeOldAge` years of
+     *   the state-pension age (the engine then falls back to RITA from that window, with an info issue).
+     */
+    accessMode: PensionFundAccessMode;
     /** Share taken as lump sum at accessAge (max 50% by law unless the annuity would be tiny). */
     capitalSharePct: number;
     /** Annuity conversion rate applied to the remaining share at accessAge, % per year (nominal, not indexed). */
@@ -376,6 +404,8 @@ export interface PayrollBreakdown {
   regionalSurcharge: number;
   municipalSurcharge: number;
   cuneoExemptSum: number; // tax-free sum added to net (income <= 20k)
+  /** OPTIONAL (added by tax engine): trattamento integrativo, tax-free, added to net. computePayroll always sets it. */
+  supplementaryTreatment?: number;
   productivityBonusTax: number; // substitute tax
   netIncome: number; // cash take-home for the year (after employee pension contributions)
   /** Taxes saved thanks to the deductible pension contributions (IRPEF + surcharges), €. */
@@ -395,13 +425,23 @@ export interface YearRow {
   calendarYear: number;
   status: YearStatus;
   priceIndex: number; // cumulative inflation factor at the START of the year (1 at t = 0)
+  /**
+   * OPTIONAL (added by simulation engine, always set by runPlan): price index at the END of the year (= next row's
+   * priceIndex). Balances are end-of-year values: divide them by priceIndexEnd for today's euros (flows by priceIndex).
+   */
+  priceIndexEnd?: number;
   inflationPct: number; // inflation realised during the year
 
   // Income
   ral: number;
   bonusGross: number;
+  /** OPTIONAL (added by simulation engine, always set): welfare bonus (tax-free benefit counted as income), €. */
+  welfareBenefit?: number;
   payroll: PayrollBreakdown | null; // null when not working
   statePensionNet: number;
+  /** OPTIONAL (added by simulation engine, always set): gross state pension and its IRPEF + surcharges, €. */
+  statePensionGross?: number;
+  statePensionTax?: number;
   pensionAnnuityNet: number;
   cashInterestNet: number;
   eventsInflow: number; // negative-amount life events (inheritance, …)
@@ -414,6 +454,7 @@ export interface YearRow {
   // Savings & allocation
   netSavings: number; // netIncome + other income − expenses − events − bollo (can be negative)
   savingsRatePct: number | null; // netSavings / payroll.netIncome (working years only)
+  /** Net flow into cash this year (negative when cash is drawn to cover expenses). */
   toEmergencyFund: number;
   toPortfolio: number;
   withdrawalGross: number; // portfolio sold to cover needs
@@ -468,6 +509,7 @@ export interface YearRow {
   fireTarget: number;
 }
 
+/** Sums over the whole horizon, in TODAY'S euros (each year's flow divided by that year's priceIndex). */
 export interface LifetimeTotals {
   grossIncome: number;
   netIncome: number;
@@ -544,6 +586,10 @@ export interface SensitivityItem {
   key: string; // e.g. 'returns', 'inflation', 'spending', 'salary', 'retirementSpending', 'lifeExpectancy', 'statePension'
   lowDelta: string; // human label of the low variation, e.g. '-1 pp'
   highDelta: string;
+  /** OPTIONAL (added by simulation engine): structured variation for i18n formatting, e.g. unit 'pp', values -1 / +1. */
+  unit?: 'pp' | 'pct' | 'years';
+  lowValue?: number;
+  highValue?: number;
   fiAgeLow: number | null;
   fiAgeHigh: number | null;
   fiAgeBase: number | null;

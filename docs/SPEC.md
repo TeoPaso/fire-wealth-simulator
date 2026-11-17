@@ -85,7 +85,7 @@ the year in which age = R; i.e. years with age < R are working years).
   `fixed`: fixedToday·P_t. `cap = rules.pensionFund.deductionCap` (nominal, NOT indexed).
 - Bonus regimes: `productivity` → `PayrollInput.productivityBonus` (eligible if prior-year employment income ≤
   limit; amount above cap taxed ordinarily; INPS due; substitute rate = ratePct while year ≤ validUntilYear, else
-  afterRatePct/afterCap); `ordinary` → `ordinaryBonus`; `pensionFund` → goes entirely to the fund, no IRPEF, no
+  afterRatePct/afterCap; the cap is measured on the bonus NET of employee INPS, circ. AdE 28/E/2016); `ordinary` → `ordinaryBonus`; `pensionFund` → goes entirely to the fund, no IRPEF, no
   employee INPS, outside the cap, not taxed at exit (if fund disabled: treated as `productivity` + info issue);
   `welfare` → tax-free benefit counted as income (offsets expenses).
 - `computePayroll`:
@@ -127,12 +127,17 @@ the year in which age = R; i.e. years with age < R are working years).
   Tax only positive results after offsetting carried-forward negative results (`lossCarry`).
 - `taxableBasis += deductibleEmployee + min(employer, cap) + toFund` (non-deductible employee money and
   bonus-to-fund are exempt at exit).
-- Access at `A = max(pensionFund.accessAge, R)`:
-  - if `accessAge ≥ oldAgeAge` (ordinary benefit): lump = V·capitalShare%; annuity on the rest at annuityRatePct
-    (nominal constant). Exit tax rate = `exitTaxRatePct(year − membershipStartYear)` applied to the taxable share
-    `taxableBasis/V` of every payment. Fund balance → 0.
-  - if `accessAge < oldAgeAge` (RITA): requires R ≤ accessAge; pay the whole position in equal yearly instalments
-    from A until oldAgeAge (balance keeps growing; instalment = balance/remainingYears), taxed like above.
+- Access depends on `pensionFund.accessMode` (fund position V, taxable share `taxableBasis/V`, exit-tax rate
+  `exitTaxRatePct(year − membershipStartYear)` applied to the taxable share of every payment; fund balance → 0 when fully paid):
+  - `retirement` (ordinary benefit) at `A = max(accessAge, R)` (accessAge ≥ oldAgeAge expected): lump = V·capitalShare%
+    (legal max 50%); annuity on the rest at annuityRatePct (nominal constant).
+  - `rita`: requires R ≤ accessAge and accessAge ≥ oldAgeAge − ritaMaxYearsEarly (− ritaMaxYearsEarlyUnemployed if the
+    user declares > 24 months of unemployment: warning `ritaRequiresUnemployment`); pay the whole position in equal yearly
+    instalments from accessAge until oldAgeAge (balance keeps growing; instalment = balance/remainingYears).
+  - `redemption` (riscatto totale per inoccupazione, art. 14 c.2 D.Lgs. 252/2005): 100% lump sum at
+    `R + redemptionAfterUnemployedYears`, taxed like a benefit; if that age is within `redemptionBlockedYearsBeforeOldAge`
+    of oldAgeAge, fall back to RITA from `oldAgeAge − redemptionBlockedYearsBeforeOldAge` (info `redemptionFallbackRita`).
+  - Locked money is never available before these events. Anticipazioni (23%) are not modelled.
 - membership < minMembershipYears at access → warning issue; still paid.
 
 ### 5.4 State pension (INPS)
@@ -193,10 +198,10 @@ lifeExpectancy ±5 y, state pension ±20% (estimate amount or transformation coe
 Errors: `ageRange`, `lifeExpectancyRange`, `careerEmpty`, `careerOrder`, `careerFirstPhase`, `negativeAmount`,
 `pctRange`, `mensilitaRange`, `allocationSum`, `unknownHoldingAsset`, `fixedAgeRange`, `eventAgeRange`,
 `eventYears`, `pfAccessTooEarly`, `swrRange`, `runsRange`.
-Warnings: `tfrPartialOnlyOldMembers`, `returnVeryHigh` (> 8%), `realReturnNonPositive`, `capitalShareAboveLegal`,
+Warnings: `tfrBackToCompany` (a later phase sends less TFR to the fund than an earlier one: the choice of the fund is irreversible), `returnVeryHigh` (> 8%), `realReturnNonPositive`, `capitalShareAboveLegal`,
 `ritaRequiresUnemployment` (accessAge < oldAgeAge − 5), `claimBeforeOldAge`, `singleAssetConcentration`
 (> 80% one equity asset), `negativeSavingsWhileWorking` (post-run), `bonusAboveCap`, `bonusIneligibleIncome`,
-`contributionAboveCap`, `noStatePension`, `pfShortMembership`. Infos: `montanteEstimated`, `bonusToFundDisabled`.
+`contributionAboveCap`, `noStatePension`, `pfShortMembership`. Infos: `montanteEstimated`, `bonusToFundDisabled`, `tfrPartialCheckContract` (0 < tfrToFundPct < 100: allowed only if your CCNL/fund sets a minimum share or you enrolled before 29/04/1993), `redemptionFallbackRita`.
 
 ## 6. Store & persistence (lib/store)
 - `PlannerState { version: 2; plans: Plan[]; activePlanId; compareIds; ui: { lang: 'it'|'en'; valueMode:
