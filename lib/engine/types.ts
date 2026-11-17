@@ -1,176 +1,559 @@
 /**
- * TFR Destination Routing Option (Legacy / compatibility)
+ * FIRE Planner Italia — engine contract (schema v2).
+ *
+ * Conventions (see docs/SPEC.md):
+ * - Every money INPUT is in TODAY'S EUROS (purchasing power of the plan's start year) unless the field name ends in
+ *   `Nominal`. The engine simulates in NOMINAL euros, one step per year, and every output row carries `priceIndex`
+ *   (1 at t = 0) so the UI can show real values (nominal / priceIndex) or nominal values.
+ * - Percentages are expressed as numbers in percent (7 means 7%), never as fractions, in inputs and outputs.
+ * - t = 0 is the plan's start year; age at t is profile.currentAge + t. Flows inside a year follow the mid-year
+ *   convention (a flow invested during year t earns sqrt(1 + r_t) - 1 in that year).
+ * - The engine never mutates or silently "fixes" a Plan. validatePlan() returns Issues; run* functions throw
+ *   PlanValidationError if any Issue has level 'error'.
  */
-export type TFRDestination = 'PENSION_FUND' | 'COMPANY_RETAINED' | 'CUSTOM_SPLIT';
 
-/**
- * Tax Treatment for Annual Performance Bonus (Premio di Risultato / Variabile)
- */
-export type BonusTaxType = 'DETASSAZIONE_5' | 'ORDINARIA_IRPEF' | 'CUSTOM';
+export const SCHEMA_VERSION = 2 as const;
 
-/**
- * Multi-Phase Salary & Savings Configuration
- */
-export interface SalaryPhase {
+/* ───────────────────────────── Tax & legal rules ───────────────────────────── */
+
+export interface RateBand {
+  /** Upper bound of the band in nominal € (inclusive); null = no upper bound. */
+  upTo: number | null;
+  ratePct: number;
+}
+
+export interface SourceRef {
+  key: string;
+  label: string;
+  url: string;
+}
+
+/** All Italian legal/tax parameters. Versioned and editable; defaults live in lib/engine/rules/it2026.ts. */
+export interface TaxRules {
+  id: string; // e.g. 'IT-2026'
+  label: string;
+  referenceYear: number; // calendar year the nominal thresholds refer to (2026)
+  irpef: {
+    brackets: RateBand[]; // 23 / 33 / 43 in 2026
+    /** Italian brackets/deductions are NOT indexed by law (fiscal drag). false = realistic default. */
+    indexToInflation: boolean;
+    /** art. 13 c.1 TUIR — detrazione lavoro dipendente, RC = reddito complessivo */
+    employeeDeduction: {
+      band1Limit: number; // 15000
+      band1Amount: number; // 1955
+      band2Limit: number; // 28000
+      band2Base: number; // 1910
+      band2Extra: number; // 1190  -> base + extra*(band2Limit-RC)/(band2Limit-band1Limit)
+      band3Limit: number; // 50000 -> band2Base*(band3Limit-RC)/(band3Limit-band2Limit)
+      bonusFrom: number; // 25000 (exclusive)
+      bonusTo: number; // 35000 (inclusive)
+      bonusAmount: number; // 65
+    };
+    /** art. 13 c.3 TUIR — detrazione redditi da pensione */
+    pensionerDeduction: {
+      band1Limit: number; // 8500
+      band1Amount: number; // 1955
+      band2Limit: number; // 28000
+      band2Base: number; // 700
+      band2Extra: number; // 1255
+      band3Limit: number; // 50000
+      bonusFrom: number; // 25000
+      bonusTo: number; // 29000
+      bonusAmount: number; // 50
+    };
+    /** L. 207/2024 c.4-9 — cuneo fiscale (structural from 2025). */
+    cuneo: {
+      /** Tax-free extra sum for employment income <= last upTo: pct × employment income (ADDED to net, not taxable). */
+      exemptSumBands: RateBand[]; // [{8500,7.1},{15000,5.3},{20000,4.8}]
+      extraDeductionAmount: number; // 1000
+      extraDeductionFrom: number; // 20000 (exclusive)
+      extraDeductionFullUpTo: number; // 32000
+      extraDeductionZeroAt: number; // 40000
+    };
+    regionalSurchargeBands: RateBand[]; // addizionale regionale (progressive by band). Default: legal minimum 1.23% flat
+    municipalSurchargePct: number; // addizionale comunale, flat on the whole taxable income
+    municipalExemptionThreshold: number; // if taxable income <= threshold, municipal surcharge = 0
+  };
+  inps: {
+    employeeRatePct: number; // 9.19
+    additionalRatePct: number; // 1 (on the part above additionalThreshold)
+    additionalThreshold: number; // 56224 (2026, indexed yearly by law)
+    ceiling: number; // 122295 massimale (2026, indexed)
+    indexThresholdsToInflation: boolean; // true (INPS thresholds ARE indexed)
+    pensionAccrualRatePct: number; // 33 — aliquota di computo for the montante contributivo
+  };
+  productivityBonus: {
+    ratePct: number; // 1 (2026-2027, L. 199/2025)
+    cap: number; // 5000
+    priorYearIncomeLimit: number; // 80000
+    validUntilYear: number | null; // 2027; after it the "after*" values apply (unless null)
+    afterRatePct: number; // 10
+    afterCap: number; // 3000
+  };
+  tfr: {
+    divisor: number; // 13.5
+    contributionPct: number; // 0.5 — subtracted from the annual quota (art. 3 c.15 L. 297/1982): quota = RAL/13.5 - 0.5%·RAL
+    revalFixedPct: number; // 1.5
+    revalInflationSharePct: number; // 75
+    revalTaxPct: number; // 17 imposta sostitutiva on revaluation, yearly
+  };
+  pensionFund: {
+    deductionCap: number; // 5300 from 2026 (employee + employer, TFR excluded). NOT indexed.
+    yieldTaxPct: number; // 20 on net result
+    govBondYieldTaxPct: number; // 12.5 on the white-list share
+    exitTaxMaxPct: number; // 15
+    exitTaxMinPct: number; // 9
+    exitTaxReductionPerYearPct: number; // 0.3
+    exitTaxReductionAfterYears: number; // 15
+    earlyRedemptionTaxPct: number; // 23 (riscatto per altre cause / anticipazioni non sanitarie)
+    maxCapitalSharePct: number; // 50 at retirement
+    minMembershipYears: number; // 5
+    ritaMaxYearsEarly: number; // 5 (10 if unemployed > 24 months — modelled only as a user choice)
+  };
+  investments: {
+    capitalGainsPct: number; // 26
+    govBondPct: number; // 12.5
+    stampDutyPct: number; // 0.2 on securities deposit
+    cashStampDuty: number; // 34.20 on current account
+    cashStampDutyThreshold: number; // 5000 (average balance)
+    cashInterestTaxPct: number; // 26
+  };
+  statePension: {
+    oldAgeAge: number; // 67 (vecchiaia)
+    oldAgeMinYears: number; // 20
+    fallbackAge: number; // 71
+    fallbackMinYears: number; // 5
+    /** coefficienti di trasformazione (% of montante) by claim age. */
+    transformationCoefficients: Record<string, number>;
+    installmentsPerYear: number; // 13
+  };
+  sources: SourceRef[];
+}
+
+/* ───────────────────────────── Plan (inputs) ───────────────────────────── */
+
+export type AssetKind = 'equity' | 'bond' | 'cash' | 'other';
+export type BonusRegime = 'productivity' | 'ordinary' | 'pensionFund' | 'welfare';
+export type RebalancingMode = 'flows' | 'annual';
+export type WithdrawalStrategy = 'constantReal' | 'guardrails';
+export type StatePensionMode = 'estimate' | 'contributivo';
+export type RetirementMode = 'auto' | 'fixedAge';
+export type VoluntaryPensionMode = 'none' | 'fillCap' | 'fixed';
+
+export interface CareerPhase {
   id: string;
-  startYear: number; // 1-indexed (e.g. 1)
-  endYear: number; // inclusive (e.g. 3)
-  annualGrossRAL: number; // Gross annual fixed salary in EUR (e.g. 37500)
-  mensilita: number; // Number of salary installments per year (12, 13, or 14)
-  monthlyNetSavings: number; // Regular net personal monthly savings allocated to investments (e.g. 600)
-  extraSavings13th?: number; // Additional net savings invested from 13th salary installment in EUR (e.g. 500)
-  extraSavings14th?: number; // Additional net savings invested from 14th salary installment in EUR (e.g. 500)
-  annualBonusGross?: number; // Gross annual variable performance bonus in EUR (e.g. 3750)
-  bonusTaxType?: BonusTaxType; // Tax treatment on variable bonus ('DETASSAZIONE_5' or 'ORDINARIA_IRPEF' or 'CUSTOM')
-  bonusTaxRatePercent?: number; // Custom tax rate on bonus % if bonusTaxType === 'CUSTOM'
-  bonusInvestPercent?: number; // Percentage of net bonus allocated to investments % (remainder goes to cash liquidity, e.g. 100)
-  tfrDestination?: TFRDestination; // Phase-level TFR override (optional)
-  tfrPensionAllocationPercent?: number; // Percentage of accrued TFR routed to Pension Fund (0 to 100). Default inherits from PensionFundConfig
-  savingsToPensionPercent?: number; // Percentage of personal net savings allocated to voluntary Pension Fund contribution (0 to 100, e.g. 0%, 25%, 50%, 75%, 100%). Remainder goes to ETF portfolio.
+  label?: string;
+  /** Phase lasts from the previous phase's untilAge (or currentAge) up to this age (exclusive). Must be increasing. */
+  untilAge: number;
+  /** Gross annual salary (RAL) at the START of the phase, in today's euros. */
+  ralToday: number;
+  /** Real (above-inflation) yearly raise inside the phase, %. */
+  realRaisePct: number;
+  /** 12, 13 or 14: only affects monthly figures shown in the UI (annual totals are RAL-based). */
+  mensilita: number;
+  /** Gross yearly variable bonus at the start of the phase, today's euros; grows with the salary. */
+  bonusGrossToday: number;
+  bonusRegime: BonusRegime;
+  /** Employee contribution to the pension fund, % of RAL (withheld in payroll). */
+  employeePensionPct: number;
+  /** Employer contribution, % of RAL (paid only if employeePensionPct > 0). */
+  employerPensionPct: number;
+  /** Share of the TFR quota sent to the pension fund (0 or 100; partial only for members before 29/04/1993). */
+  tfrToFundPct: number;
 }
 
-/**
- * Personal Investment Asset Bucket
- */
-export interface InvestmentBucket {
+export interface LifeEvent {
   id: string;
-  name: string; // e.g. "Global Stocks", "Gov Bonds", "Gold"
-  allocationPercent: number; // Allocation percentage (0..100, total across buckets must sum to 100)
-  expectedReturnPercent: number; // Gross annual return rate % (e.g. 7.0)
-  terPercent: number; // Total Expense Ratio / annual management fee % (e.g. 0.2)
-  taxRatePercent: number; // Capital gains tax rate % (e.g. 26.0 for stocks, 12.5 for gov bonds)
+  label: string;
+  /** Age at which the event (first) happens. */
+  age: number;
+  /** Today's euros. Positive = expense (house, car), negative = inflow (inheritance, sale). */
+  amountToday: number;
+  /** 1 = one-off; N = repeats yearly for N years. */
+  years: number;
 }
 
-/**
- * Complementary Pension Fund Configuration (Fondo Pensione Integrativo)
- */
-export interface PensionFundConfig {
-  enabled: boolean;
-  routeTfr: boolean; // Legacy flag: if true and tfrPensionAllocationPercent is undefined, defaults to 100%
-  tfrPensionAllocationPercent?: number; // Percentage of accrued TFR routed to pension fund (0 to 100: 0% = 100% company, 100% = 100% fund)
-  savingsToPensionPercent?: number; // Default percentage of personal net savings routed to voluntary pension contributions (0 to 100)
-  reinvestTaxRebate?: boolean; // If true, IRPEF tax rebate is reinvested into the investment portfolio; if false, retained as cash liquidity (default: true)
-  autoMaxDeductibility?: boolean; // If true, automatically calculates employee contribution % to exactly saturate the tax deduction cap (€5,164.57 or custom)
-  employeeContributionPercent: number; // Voluntary employee contribution (% of RAL)
-  employerContributionPercent: number; // Employer matching contribution (% of RAL)
-  expectedReturnPercent: number; // Expected gross annual return %
-  terPercent: number; // Annual TER fee %
-  taxRatePercent: number; // Effective tax rate on pension payout at retirement (typically 9% to 15%)
-  annualYieldTaxRatePercent?: number; // Annual substitute tax on yields inside pension fund % (default 20.0% in Italy)
-}
-
-/**
- * Parametric Taxation & Regulatory Configuration
- */
-export interface TaxConfig {
-  wealthTaxPercent: number; // Annual Imposta di Bollo on financial assets % (default 0.2%)
-  pensionDeductionCap: number; // Annual IRPEF tax deduction cap EUR (default €5,164.57)
-  marginalIRPEFTaxRate: number; // Marginal IRPEF rate for cash tax rebate % (e.g. 35% or 43%)
-  tfrSubtractedPercentage?: number; // Legal deduction base under Art. 3 L. 297/82 % (default 0.5%)
-  tfrCompanyTaxRatePercent?: number; // Estimated separate taxation rate on company TFR at exit % (default 23.0%)
-  tfrCompanyFixedRevalRate?: number; // Fixed annual TFR revaluation rate in company % (default 1.5%)
-  tfrCompanyInflationWeight?: number; // Weight of inflation in company TFR revaluation % (default 75.0%)
-  bonusSubstituteTaxRate?: number; // Preferential substitute tax rate on performance bonuses % (default 5.0%)
-  pensionAnnualYieldTaxRate?: number; // Annual tax on yields inside pension fund % (default 20.0%)
-}
-
-/**
- * Initial Starting Balances & Liquid Capital
- */
-export interface InitialWealth {
-  investedCapital: number; // Starting liquid investment balance in EUR
-  cashLiquidity: number; // Starting emergency fund / cash reserves in EUR
-  pensionBalance: number; // Starting balance in pension fund in EUR
-  accumulatedTfr: number; // Starting TFR accumulated in company/INPS in EUR
-}
-
-/**
- * Complete Scenario Parameters Envelope
- */
-export interface ScenarioParameters {
+export interface AssetClass {
   id: string;
   name: string;
-  description: string;
-  timeHorizonYears: number; // Time horizon in years (1 to 50)
-  inflationEnabled?: boolean; // If false, inflation is disabled (0%); if true, inflationRatePercent is applied (default: true)
-  inflationRatePercent: number; // Expected annual inflation rate % (default 2.0%)
-  tfrDivisor: number; // Legal/custom TFR divisor (default 13.5)
-  initialWealth: InitialWealth;
-  salaryPhases: SalaryPhase[];
-  pensionFund: PensionFundConfig;
-  investmentBuckets: InvestmentBucket[];
-  taxes: TaxConfig;
+  kind: AssetKind;
+  /** Target allocation %, all assets must sum to 100. */
+  allocationPct: number;
+  /** Expected nominal COMPOUND (geometric, median) annual return before costs, %. */
+  expectedReturnPct: number;
+  /** Annual volatility of returns, % (used by Monte Carlo only). */
+  volatilityPct: number;
+  /** Annual product cost (TER), %. */
+  terPct: number;
+  /** Effective capital-gains tax rate, % (26 equity; 12.5 direct white-list govies; blended for bond ETFs). */
+  taxRatePct: number;
 }
 
-/**
- * Single Row in the Year-by-Year Simulation Table
- */
-export interface YearlyProjectionRow {
-  year: number; // 1-indexed year (1 to N)
-  age?: number; // User age (optional display helper)
-  ral: number; // Active Gross Annual Salary for year t
-  netMonthlySavings: number; // Active monthly net savings rate for year t
-  savings13thYear: number; // Additional net savings invested from 13th installment
-  savings14thYear: number; // Additional net savings invested from 14th installment
-  savingsToPensionYear?: number; // Net personal savings allocated to voluntary pension fund contribution in year t
-  savingsToPortfolioYear?: number; // Net personal savings allocated to personal ETF/investment portfolio in year t
-  bonusGrossYear: number; // Gross variable bonus earned in year t
-  bonusNetYear: number; // Net variable bonus after tax
-  bonusInvestedYear: number; // Net variable bonus injected into investments
-  bonusCashYear: number; // Net variable bonus kept in cash liquidity
-  cashBalance: number; // End-of-year cash & liquidity reserves in EUR
-  tfrAccruedYear: number; // Total TFR accrued during year t
-  tfrPensionFlowYear: number; // Portion of TFR routed to Pension Fund in year t
-  tfrCompanyFlowYear: number; // Portion of TFR retained in company in year t
-  tfrCompanyBalance: number; // End-of-year TFR accumulated in company (gross)
-  tfrCompanyBalanceGross: number; // Gross TFR balance in company
-  tfrCompanyBalanceNet: number; // Net TFR balance in company after separate tax liability
-  pensionContributionEmployee: number; // Employee voluntary pension contribution for year t (including savings allocation)
-  pensionContributionEmployer: number; // Employer matching pension contribution for year t
-  pensionTaxRebate: number; // Annual IRPEF tax rebate received from pension contribution
-  reinvestedTaxRebateYear?: number; // Portion of IRPEF tax rebate reinvested into investment portfolio
-  pensionFundBalance: number; // End-of-year pension fund balance (gross)
-  pensionFundBalanceGross: number; // Gross balance in pension fund
-  pensionFundBalanceNet: number; // Net balance in pension fund post retirement tax liability
-  investmentContributions: number; // Total personal savings + invested bonuses injected into buckets during year t
-  investmentGainsYear: number; // Total investment returns earned across buckets in year t (net of TER and annual taxes)
-  investmentFeesYear: number; // Total TER fees paid across buckets and pension in year t
-  investmentPortfolioBalance: number; // End-of-year investment portfolio value (gross of latent capital gains tax, post-wealth tax)
-  investmentPortfolioBalanceGross: number; // Gross investment portfolio value
-  investmentPortfolioBalanceNet: number; // Net investment portfolio value after latent capital gains tax
-  totalWealthNominal: number; // Total net worth at year t (nominal EUR, net of all latent tax liabilities)
-  totalWealthNominalNet: number; // Explicit net total wealth
-  totalWealthNominalGross: number; // Total gross wealth before exit/latent taxes
-  totalWealthReal: number; // Total net worth at year t (real EUR, discounted by inflation)
-  totalWealthRealNet: number; // Real net wealth
-  totalWealthRealGross: number; // Real gross wealth
-  totalContributionsCumulative: number; // Cumulative capital contributed from year 0 to year t
-  totalGainsCumulative: number; // Cumulative gross gains earned from year 0 to year t
-  totalFeesCumulative: number; // Cumulative TER fees paid from year 0 to year t
+export interface Holding {
+  assetId: string;
+  /** Current market value, €. */
+  value: number;
+  /** Fiscal cost basis (prezzo medio di carico × quantity), €. Defaults to value when unknown. */
+  costBasis: number;
 }
 
-/**
- * High-Level Key Performance Indicator Summary
- */
-export interface KPISummary {
-  finalTotalWealthNominal: number; // Nominal net worth at year N (Net)
-  finalTotalWealthNominalGross: number; // Nominal gross wealth at year N (Gross)
-  finalTotalWealthReal: number; // Real net worth at year N
-  irrAnnualPercent: number; // Internal Rate of Return / TIR (Money-Weighted Rate of Return % per annum)
-  averageAnnualReturnPercent: number; // Alias to IRR for UI backwards compatibility
-  totalContributions: number; // Total cumulative personal + employer + TFR capital injected over N years
-  totalInvestmentGains: number; // Total cumulative net gains earned over N years (Final Net Wealth - Total Contributions)
-  totalGrossGains: number; // Total cumulative gross investment returns before taxes & fees
-  totalFeesPaid: number; // Total cumulative TER management fees paid over N years
-  totalTaxesPaid: number; // Total cumulative wealth taxes & annual fees paid over N years
+export interface Plan {
+  schemaVersion: typeof SCHEMA_VERSION;
+  id: string;
+  name: string;
+  notes: string;
+  createdAt: string; // ISO
+  updatedAt: string; // ISO
+
+  profile: {
+    currentAge: number; // integer
+    lifeExpectancy: number; // plan horizon: simulate until this age (inclusive)
+    startYear: number; // calendar year of t = 0
+  };
+
+  career: CareerPhase[];
+
+  retirement: {
+    /** 'auto' = stop working at the computed FI age; 'fixedAge' = stop at fixedAge (to test a target). */
+    mode: RetirementMode;
+    fixedAge: number;
+  };
+
+  spending: {
+    /** Monthly living expenses while working, today's euros (rent/mortgage included). */
+    monthlyToday: number;
+    /** Spending after stopping work, % of working spending. */
+    retirementPct: number;
+    events: LifeEvent[];
+  };
+
+  savingsPolicy: {
+    /** Emergency fund kept in cash, in months of current expenses. Savings fill it before investing. */
+    emergencyFundMonths: number;
+    /** Extra voluntary pension contribution beyond employeePensionPct (withheld in payroll). */
+    voluntaryPension: VoluntaryPensionMode;
+    /** For 'fixed': yearly amount, today's euros. */
+    voluntaryPensionFixedToday: number;
+  };
+
+  assets: {
+    cash: number;
+    holdings: Holding[];
+    pensionFund: {
+      balance: number;
+      /** Part of the balance that will be taxed at exit (deducted contributions + employer + TFR). Default = balance. */
+      taxableBasis: number;
+      /** Calendar year of first enrolment (all membership periods count for the exit-tax reduction). */
+      membershipStartYear: number;
+    };
+    /** TFR already accrued and kept by the employer (or INPS Tesoreria), €. */
+    companyTfr: number;
+    /** Years of service the companyTfr refers to (for the tassazione separata rate). */
+    companyTfrYears: number;
+    inps: {
+      /** Contribution years already accrued. */
+      contributionYears: number;
+      /** Montante contributivo already accrued (from the INPS statement), €. 0 = unknown → engine estimates it. */
+      montante: number;
+    };
+  };
+
+  portfolio: {
+    assets: AssetClass[];
+    /** Correlation between equity-like and bond-like returns (MC). Equity-equity uses 0.85, bond-bond 0.7. */
+    equityBondCorrelation: number;
+    rebalancing: RebalancingMode;
+  };
+
+  pensionFund: {
+    enabled: boolean;
+    name: string;
+    expectedReturnPct: number; // nominal compound, before costs
+    volatilityPct: number;
+    costPct: number; // ISC / TER, %
+    /** Share of the fund invested in white-list government bonds (lowers the yield tax). */
+    govBondSharePct: number;
+    /** Correlation of the fund line with equities (MC). */
+    equityCorrelation: number;
+    /** Age at which the position is redeemed (default = state-pension age; RITA allows up to 5/10 years earlier). */
+    accessAge: number;
+    /** Share taken as lump sum at accessAge (max 50% by law unless the annuity would be tiny). */
+    capitalSharePct: number;
+    /** Annuity conversion rate applied to the remaining share at accessAge, % per year (nominal, not indexed). */
+    annuityRatePct: number;
+  };
+
+  statePension: {
+    mode: StatePensionMode;
+    /** For 'estimate': expected NET monthly pension in today's euros (e.g. from INPS "La mia pensione futura"). */
+    monthlyNetToday: number;
+    /** Age at which the state pension is claimed (>= oldAgeAge unless user knows better). */
+    claimAge: number;
+    /** For 'contributivo': real GDP growth used to revalue the montante, % (montante grows at inflation + this). */
+    realGdpGrowthPct: number;
+    /** Share of inflation applied to pension indexation (perequazione), %. */
+    indexationPct: number;
+  };
+
+  withdrawal: {
+    /** Safe withdrawal rate used for the classic FIRE number (expenses / SWR). */
+    swrPct: number;
+    strategy: WithdrawalStrategy;
+    /** For 'guardrails': spending cut applied while the withdrawal rate exceeds swrPct × 1.2. */
+    guardrailCutPct: number;
+  };
+
+  market: {
+    inflationPct: number;
+    inflationVolatilityPct: number;
+    /** Nominal gross interest on cash/conto deposito, %. */
+    cashRatePct: number;
+  };
+
+  simulation: {
+    monteCarloRuns: number; // e.g. 1000
+    seed: number;
+    /** Required Monte Carlo success probability for the "confident" FI age, %. */
+    successTargetPct: number;
+  };
+
+  taxRules: TaxRules;
 }
 
-/**
- * Complete Output Result of Scenario Calculation Engine
- */
-export interface ScenarioProjectionResult {
-  scenarioId: string;
-  parameters: ScenarioParameters;
-  yearlyProjections: YearlyProjectionRow[];
-  kpiSummary: KPISummary;
+/* ───────────────────────────── Validation ───────────────────────────── */
+
+export type IssueLevel = 'error' | 'warning' | 'info';
+
+export interface Issue {
+  level: IssueLevel;
+  /** JSON-ish path of the offending field, e.g. 'career[1].untilAge' or 'portfolio.assets'. */
+  path: string;
+  /** Stable code used as i18n key suffix: issues.<code> */
+  code: string;
+  params?: Record<string, string | number>;
+}
+
+export class PlanValidationError extends Error {
+  issues: Issue[];
+  constructor(issues: Issue[]) {
+    super(`Plan has ${issues.filter((i) => i.level === 'error').length} validation error(s)`);
+    this.name = 'PlanValidationError';
+    this.issues = issues;
+  }
+}
+
+/* ───────────────────────────── Payroll ───────────────────────────── */
+
+export interface PayrollInput {
+  /** Nominal gross salary of the year (RAL), €. */
+  ral: number;
+  /** Bonus taxed ordinarily (added to RAL for INPS and IRPEF), €. */
+  ordinaryBonus: number;
+  /** Productivity bonus requested under the substitute regime, €. Excess over cap is taxed ordinarily. */
+  productivityBonus: number;
+  /** Prior-year employment income (for the productivity-bonus eligibility), €. */
+  priorYearIncome: number;
+  /** Employee pension contribution withheld in payroll (incl. voluntary), €. */
+  employeePensionContribution: number;
+  /** Employer pension contribution, €. */
+  employerPensionContribution: number;
+  calendarYear: number;
+  /** Price index of the year (for indexing thresholds that are indexed by law/user choice). */
+  priceIndex: number;
+}
+
+export interface PayrollBreakdown {
+  gross: number; // ral + ordinaryBonus + productivityBonus
+  inps: number; // employee social contributions (incl. on bonuses)
+  deductiblePension: number; // employee contribution excluded from taxable income
+  nonDeductiblePension: number; // employee contribution above the cap
+  employerExcessTaxable: number; // employer contribution above the cap (becomes taxable)
+  taxableIncome: number; // reddito complessivo used for IRPEF
+  irpefGross: number;
+  employeeDeduction: number;
+  cuneoExtraDeduction: number;
+  irpefNet: number;
+  regionalSurcharge: number;
+  municipalSurcharge: number;
+  cuneoExemptSum: number; // tax-free sum added to net (income <= 20k)
+  productivityBonusTax: number; // substitute tax
+  netIncome: number; // cash take-home for the year (after employee pension contributions)
+  /** Taxes saved thanks to the deductible pension contributions (IRPEF + surcharges), €. */
+  pensionTaxSaving: number;
+  marginalRatePct: number; // IRPEF + surcharges marginal rate on the last euro of ordinary income
+  averageRatePct: number; // (irpefNet + surcharges) / gross
+}
+
+/* ───────────────────────────── Simulation outputs ───────────────────────────── */
+
+export type YearStatus = 'working' | 'retired';
+
+/** One simulated year. ALL money fields are NOMINAL €. Divide by priceIndex for today's euros. */
+export interface YearRow {
+  t: number;
+  age: number;
+  calendarYear: number;
+  status: YearStatus;
+  priceIndex: number; // cumulative inflation factor at the START of the year (1 at t = 0)
+  inflationPct: number; // inflation realised during the year
+
+  // Income
+  ral: number;
+  bonusGross: number;
+  payroll: PayrollBreakdown | null; // null when not working
+  statePensionNet: number;
+  pensionAnnuityNet: number;
+  cashInterestNet: number;
+  eventsInflow: number; // negative-amount life events (inheritance, …)
+
+  // Outflows
+  livingExpenses: number;
+  eventsExpense: number;
+  stampDuty: number; // bollo securities + cash
+
+  // Savings & allocation
+  netSavings: number; // netIncome + other income − expenses − events − bollo (can be negative)
+  savingsRatePct: number | null; // netSavings / payroll.netIncome (working years only)
+  toEmergencyFund: number;
+  toPortfolio: number;
+  withdrawalGross: number; // portfolio sold to cover needs
+  withdrawalTax: number; // capital-gains tax on those sales
+  rebalancingTax: number;
+  shortfall: number; // need not covered by accessible assets (> 0 means the plan failed this year)
+  spendingCutPct: number; // guardrails
+
+  // Pension fund
+  pfEmployee: number;
+  pfEmployer: number;
+  pfTfr: number;
+  pfBonus: number;
+  pfReturn: number; // gross market return before costs and tax
+  pfCosts: number;
+  pfYieldTax: number;
+  pfLumpSumNet: number; // capital paid at accessAge (net of exit tax)
+  pfExitTax: number;
+
+  // TFR kept by the employer
+  tfrAccrued: number;
+  tfrToFund: number;
+  tfrToCompany: number;
+  tfrRevaluationNet: number;
+  tfrRevaluationTax: number;
+  tfrPayoutNet: number; // paid at job exit
+  tfrPayoutTax: number;
+
+  // Personal portfolio
+  portfolioReturn: number; // market return before costs
+  portfolioCosts: number; // TER
+  realizedGainsTax: number; // withdrawalTax + rebalancingTax
+
+  // Balances at END of year (nominal €)
+  cash: number;
+  portfolioValue: number;
+  portfolioCostBasis: number;
+  portfolioByAsset: number[]; // same order as plan.portfolio.assets
+  pensionFund: number;
+  pensionFundTaxableBasis: number;
+  companyTfr: number;
+  inpsMontante: number;
+
+  // Derived
+  portfolioLatentTax: number;
+  pensionFundNet: number; // value if redeemed at the ordinary exit-tax rate
+  companyTfrNet: number;
+  accessibleNet: number; // cash + portfolio − latent tax
+  lockedNet: number; // pensionFundNet + companyTfrNet (while not yet paid out)
+  netWorth: number; // accessibleNet + lockedNet
+  /** Annual retirement spending / SWR at this year's prices — the classic FIRE target. */
+  fireTarget: number;
+}
+
+export interface LifetimeTotals {
+  grossIncome: number;
+  netIncome: number;
+  irpefAndSurcharges: number;
+  inps: number;
+  capitalGainsTax: number;
+  stampDuty: number;
+  pensionFundTaxes: number; // yield + exit
+  tfrTaxes: number;
+  productCosts: number; // TER portfolio + pension fund costs
+  pensionTaxSaving: number;
+  employerContributions: number;
+}
+
+export interface PlanSummary {
+  /** Earliest age at which stopping work keeps accessible wealth >= 0 until lifeExpectancy (deterministic). */
+  fiAge: number | null;
+  /** Age at which work stops in the displayed plan (fiAge in 'auto' mode, fixedAge otherwise; fallback state-pension age). */
+  retirementAge: number;
+  yearsToFi: number | null;
+  /** Classic FIRE number in today's euros: annual retirement spending / SWR. */
+  fireNumberToday: number;
+  netWorthTodayStart: number; // net worth at t = 0 (today's €)
+  accessibleTodayStart: number;
+  progressPct: number; // accessibleTodayStart / fireNumberToday
+  /** First year (age) with shortfall > 0, if any. */
+  depletionAge: number | null;
+  success: boolean;
+  netWorthAtRetirementToday: number;
+  accessibleAtRetirementToday: number;
+  finalNetWorthToday: number;
+  avgSavingsRatePct: number | null;
+  statePensionAnnualNetToday: number; // at claim age, in today's euros
+  statePensionClaimAge: number;
+  pensionFundAccessAge: number;
+  /** Years between retirement and the first unlock of locked income (min(accessAge, claimAge)). */
+  bridgeYears: number;
+  totals: LifetimeTotals;
+}
+
+export interface PlanResult {
+  rows: YearRow[];
+  summary: PlanSummary;
+  issues: Issue[]; // warnings / infos (errors make run* throw)
+}
+
+export interface PercentileRow {
+  age: number;
+  p10: number;
+  p25: number;
+  p50: number;
+  p75: number;
+  p90: number;
+}
+
+export interface MonteCarloResult {
+  runs: number;
+  seed: number;
+  retirementAge: number;
+  successProbabilityPct: number;
+  /** Net worth in TODAY'S euros by age. */
+  netWorth: PercentileRow[];
+  /** Accessible wealth in TODAY'S euros by age. */
+  accessible: PercentileRow[];
+  /** Histogram of depletion ages among failed runs. */
+  depletionAges: { age: number; count: number }[];
+  /** Earliest retirement age whose success probability >= successTargetPct (null if none up to state-pension age). */
+  confidentFiAge: number | null;
+  /** Success probability by candidate retirement age (for the chart). */
+  successByRetirementAge: { age: number; successPct: number }[];
+}
+
+export interface SensitivityItem {
+  key: string; // e.g. 'returns', 'inflation', 'spending', 'salary', 'retirementSpending', 'lifeExpectancy', 'statePension'
+  lowDelta: string; // human label of the low variation, e.g. '-1 pp'
+  highDelta: string;
+  fiAgeLow: number | null;
+  fiAgeHigh: number | null;
+  fiAgeBase: number | null;
+}
+
+/* ───────────────────────────── Market paths ───────────────────────────── */
+
+/** Year-by-year nominal returns (decimals, e.g. 0.07) used by the simulation. Index [t]. */
+export interface MarketPath {
+  assetReturns: number[][]; // [t][assetIndex], gross of TER
+  pensionFundReturns: number[]; // [t], gross of costs
+  inflation: number[]; // [t]
 }
