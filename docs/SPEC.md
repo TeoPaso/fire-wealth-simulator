@@ -81,8 +81,10 @@ the year in which age = R; i.e. years with age < R are working years).
   `ral = ralToday·(1+g)^k·P_t`, `bonus = bonusGrossToday·(1+g)^k·P_t`.
 - Pension contributions (only if `pensionFund.enabled`):
   `employer = employeePensionPct>0 ? ral·employerPct : 0`;
-  `employee = ral·employeePct + voluntary`, voluntary = `fillCap`: max(0, cap − employer − ral·employeePct);
-  `fixed`: fixedToday·P_t. `cap = rules.pensionFund.deductionCap` (nominal, NOT indexed).
+  `employee = ral·employeePct + voluntary`, voluntary = `fillCap`: max(0, room − ral·employeePct) with
+  `room = max(0, min(cap − employer, ordinary income after INPS + employerExcess))` (`deductiblePensionRoom`: only
+  what can actually be deducted, so a year without salary withholds nothing); `fixed`: fixedToday·P_t (paid even
+  when it is not deductible). `cap = rules.pensionFund.deductionCap` (nominal, NOT indexed).
 - Bonus regimes: `productivity` → `PayrollInput.productivityBonus` (eligible if prior-year employment income ≤
   limit; amount above cap taxed ordinarily; INPS due; substitute rate = ratePct while year ≤ validUntilYear, else
   afterRatePct/afterCap; the cap is measured on the bonus NET of employee INPS, circ. AdE 28/E/2016); `ordinary` → `ordinaryBonus`; `pensionFund` → goes entirely to the fund, no IRPEF, no
@@ -92,8 +94,9 @@ the year in which age = R; i.e. years with age < R are working years).
   1. INPS = employeeRate·min(base, ceiling) + additionalRate·max(0, min(base, ceiling) − additionalThreshold),
      base = ral + ordinaryBonus + productivityBonus. If `indexThresholdsToInflation`, additionalThreshold and ceiling
      are multiplied by `priceIndex` (thresholds are expressed in referenceYear euros; startYear is assumed = referenceYear).
-  2. deductibleEmployee = min(employee, max(0, cap − employer)); nonDeductible = employee − deductibleEmployee;
-     employerExcess = max(0, employer − cap) (taxable).
+  2. deductibleEmployee = min(employee, room) with room as above (the cap left by the employer, limited by the
+     income it is deducted from); nonDeductible = employee − deductibleEmployee; employerExcess = max(0, employer −
+     cap) (taxable).
   3. Productivity bonus within cap: taxedBase = bonusWithinCap − its INPS; substituteTax = rate·taxedBase.
      Excess over cap joins ordinary income.
   4. employmentIncome (RLD) = ral + ordinaryBonus + bonusExcess − INPS(on those) − deductibleEmployee + employerExcess.
@@ -102,9 +105,12 @@ the year in which age = R; i.e. years with age < R are working years).
      cuneoExtraDeduction(RC); irpefNet = max(0, gross − deductions).
   6. Surcharges on taxableIncome: regional by bands, municipal flat unless ≤ exemption threshold.
   7. cuneoExemptSum = pct(band)·RLD if RLD ≤ last band upTo (ADDED to net, not taxable).
-  8. netIncome = gross − INPS − irpefNet − surcharges − substituteTax − employee + cuneoExemptSum.
-  9. pensionTaxSaving = (irpef+surcharges computed with deductibleEmployee = 0 and employerExcess unchanged) −
-     (irpef+surcharges actual). marginalRatePct by finite difference (+100 €).
+  8. netIncome = gross − INPS − irpefNet − surcharges − substituteTax − employee + cuneoExemptSum +
+     supplementaryTreatment (trattamento integrativo, tax-free).
+  9. pensionTaxSaving = (net fiscal burden computed with deductibleEmployee = 0 and employerExcess unchanged) −
+     (net fiscal burden actual), where net fiscal burden = irpefNet + surcharges − cuneoExemptSum −
+     supplementaryTreatment (so it includes the loss/gain of the tax-free sums). marginalRatePct by finite
+     difference (+100 €) on the same burden.
 - No "IRPEF rebate" flow exists: payroll contributions are deducted at source, so the benefit is already inside
   `netIncome` (and therefore inside savings). This removes v1's rebate double counting.
 
@@ -130,23 +136,34 @@ the year in which age = R; i.e. years with age < R are working years).
 - Access depends on `pensionFund.accessMode` (fund position V, taxable share `taxableBasis/V`, exit-tax rate
   `exitTaxRatePct(year − membershipStartYear)` applied to the taxable share of every payment; fund balance → 0 when fully paid):
   - `retirement` (ordinary benefit) at `A = max(accessAge, R)` (accessAge ≥ oldAgeAge expected): lump = V·capitalShare%
-    (legal max 50%); annuity on the rest at annuityRatePct (nominal constant).
-  - `rita`: requires R ≤ accessAge and accessAge ≥ oldAgeAge − ritaMaxYearsEarly (− ritaMaxYearsEarlyUnemployed if the
-    user declares > 24 months of unemployment: warning `ritaRequiresUnemployment`); pay the whole position in equal yearly
-    instalments from accessAge until oldAgeAge (balance keeps growing; instalment = balance/remainingYears).
+    (legal max 50%); annuity on the rest at annuityRatePct (nominal constant), paid yearly until lifeExpectancy.
+  - `rita`: accessAge ≥ oldAgeAge − ritaMaxYearsEarly (− ritaMaxYearsEarlyUnemployed if the user declares > 24 months
+    of unemployment: warning `ritaRequiresUnemployment`). RITA needs the job to have ended, so it starts at
+    `max(accessAge, R)` (info `ritaDelayedToRetirement` when R > accessAge); pay the whole position in yearly
+    instalments from that age until oldAgeAge (balance keeps growing; instalment = balance/remainingYears). If that
+    start is not before oldAgeAge, the position is paid as an ordinary benefit (info `pfOrdinaryBenefit`, or
+    `pfOrdinaryBenefitLateAccess` {age, accessAge, oldAge, ritaAge} when accessAge itself is ≥ oldAgeAge).
   - `redemption` (riscatto totale per inoccupazione, art. 14 c.2 D.Lgs. 252/2005): 100% lump sum at
     `R + redemptionAfterUnemployedYears`, taxed like a benefit; if that age is within `redemptionBlockedYearsBeforeOldAge`
-    of oldAgeAge, fall back to RITA from `oldAgeAge − redemptionBlockedYearsBeforeOldAge` (info `redemptionFallbackRita`).
+    of oldAgeAge, fall back to RITA from `max(oldAgeAge − redemptionBlockedYearsBeforeOldAge, R)` (info
+    `redemptionFallbackRita`); if R ≥ oldAgeAge, ordinary benefit at R (info `pfOrdinaryBenefit`).
   - Locked money is never available before these events. Anticipazioni (23%) are not modelled.
+  - Locked wealth: before payment the fund counts at `pensionFundNet` (redeemed at the ordinary exit-tax rate). After
+    an ordinary benefit, the annuity counts as `pensionAnnuityValue` = end-of-year value of the remaining net payments
+    (mid-year, until lifeExpectancy), discounted at the fund line's expected return net of costs and yield tax
+    (floored at 0). `lockedNet = pensionFundNet + companyTfrNet + pensionAnnuityValue`.
 - membership < minMembershipYears at access → warning issue; still paid.
 
 ### 5.4 State pension (INPS)
 - `estimate`: net = monthlyNetToday·installmentsPerYear·P_t from claimAge (indexed with inflation by construction).
 - `contributivo`: montante_0 = `assets.inps.montante` or, if 0, estimate `contributionYears·33%·RAL_0·0.85`
   (info issue `montanteEstimated`). Each year: montante ·= (1 + π_t + realGdpGrowth%); then if working
-  `+= 33%·min(ral, ceiling)`. contributionYears += 1 per working year.
-  Claim age = max(claimAge, oldAgeAge) if years ≥ oldAgeMinYears else fallbackAge if years ≥ fallbackMinYears
-  else none (warning). Gross annual at claim = montante·coefficient[claimAge]%; afterwards indexed by
+  `+= 33%·min(ral + ordinaryBonus + productivityBonus, ceiling)` (the same base INPS is charged on; welfare and
+  bonus-to-fund excluded). contributionYears += 1 per working year with an INPS base > 0 (a career break with RAL 0
+  does not count; years are not credited pro rata to the weekly minimum).
+  Claim age = max(claimAge, oldAgeAge) if years ≥ oldAgeMinYears else max(fallbackAge, claimAge) if years ≥
+  fallbackMinYears else none (warning); never before R (in `estimate` mode too: max(claimAge, R)), since the pension
+  requires leaving the job. Gross annual at claim = montante·coefficient[claimAge]%; afterwards indexed by
   `indexationPct%·π_t`. Net via `netPensionIncome` (pensioner deductions + surcharges, IRPEF brackets).
 
 ### 5.5 Living costs, events, cash
@@ -165,11 +182,16 @@ the year in which age = R; i.e. years with age < R are working years).
 - netSavings < 0: need = −netSavings. Source order: cash above EF target → portfolio sale (gross-up for tax:
   gross = need / (1 − Σ w_i·gainFrac_i·tax_i), sold from overweight first in `flows` mode, pro-rata in `annual`)
   → remaining cash → shortfall (plan fails; `depletionAge` = first age with shortfall > 0.5 €).
+- A shortfall in a WORKING year (life events included) makes every later retirement age fail in that same year:
+  post-run warning `shortfallWhileWorking` {age, amount (today's €), event (label of the year's largest expense
+  event)} with path `spending.events[i].amountToday` (or `spending.monthlyToday`); the headline names this cash gap
+  instead of "FI not reachable". No borrowing is modelled: a financed purchase is a down payment + a multi-year event.
 - Locked money is NEVER used before its unlock event.
 
 ### 5.7 Portfolio mechanics
 Per asset i: `G_i = (1+r_i)(1−ter_i)`; `end_i = V_i·G_i + (buy_i − sell_i)·sqrt(G_i)`; cost basis `+= buy_i`,
-`−= basis_i·sell_i/V_i` on sales (gain fraction measured at start of year). Annual rebalancing at year end sells
+`−= basis_i·sell_i/mid_i` on sales, with the gain fraction measured at the mid-year value `mid_i = V_i·sqrt(G_i)`
+(when the flows happen), not at the start-of-year value V_i. Annual rebalancing at year end sells
 overweight assets realising gains tax (paid from proceeds). Latent tax = Σ max(0, V_i − basis_i)·tax_i
 (ETF losses are not offsettable → no negative latent tax).
 
@@ -184,7 +206,8 @@ Classic FIRE number (shown as a reference, not used for fiAge): `monthlyToday·1
   Correlations: equity–equity 0.85, bond–bond 0.7, equity–bond = plan.portfolio.equityBondCorrelation,
   other–anything 0.5, cash vol 0 (excluded), fund–equity = pensionFund.equityCorrelation, fund–bond 0.5.
 - Log-return of asset i: `N(ln(1+E_i), s_i)` with `s_i = sqrt(ln(1 + σ_i²/(1+E_i)²))`. Inflation:
-  `N(π, σπ)` clipped to [−3%, 15%].
+  `π + σπ·clamp(z, −3, 3)` (z standard normal): the symmetric ±3σ clip keeps the mean and the median at π for every
+  valid input (a fixed [−3%, 15%] range biased the mean of high or negative inflation inputs).
 - Paths come from seed + run index, identical across candidate retirement ages (common random numbers).
 - successByRetirementAge for ages in [max(currentAge, fiAgeDet−3), min(lifeExpectancy, fiAgeDet+10)]
   (or up to claim age if fiAge null); confidentFiAge = min age with success ≥ target.
@@ -200,8 +223,12 @@ Errors: `ageRange`, `lifeExpectancyRange`, `careerEmpty`, `careerOrder`, `career
 `eventYears`, `pfAccessTooEarly`, `swrRange`, `runsRange`.
 Warnings: `tfrBackToCompany` (a later phase sends less TFR to the fund than an earlier one: the choice of the fund is irreversible), `returnVeryHigh` (> 8%), `realReturnNonPositive`, `capitalShareAboveLegal`,
 `ritaRequiresUnemployment` (accessAge < oldAgeAge − 5), `claimBeforeOldAge`, `singleAssetConcentration`
-(> 80% one equity asset), `negativeSavingsWhileWorking` (post-run), `bonusAboveCap`, `bonusIneligibleIncome`,
-`contributionAboveCap`, `noStatePension`, `pfShortMembership`. Infos: `montanteEstimated`, `bonusToFundDisabled`, `tfrPartialCheckContract` (0 < tfrToFundPct < 100: allowed only if your CCNL/fund sets a minimum share or you enrolled before 29/04/1993), `redemptionFallbackRita`.
+(> 80% one equity asset), post-run: `negativeSavingsWhileWorking`, `shortfallWhileWorking`, `bonusAboveCap`,
+`bonusIneligibleIncome`, `contributionAboveCap`, `noStatePension`, `pfShortMembership`, `pfAccessAfterHorizon`.
+Infos: `montanteEstimated`, `bonusToFundDisabled`, `tfrPartialCheckContract` (0 < tfrToFundPct < 100: allowed only if your CCNL/fund sets a minimum share or you enrolled before 29/04/1993), post-run: `redemptionFallbackRita`,
+`pfOrdinaryBenefit`, `pfOrdinaryBenefitLateAccess`, `ritaDelayedToRetirement`, `statePensionAfterHorizon`.
+The authoritative list is `ISSUE_CODES` in `lib/engine/validate.ts` (a unit test checks that every code has it/en
+messages).
 
 ## 6. Store & persistence (lib/store)
 - `PlannerState { version: 2; plans: Plan[]; activePlanId; compareIds; ui: { lang: 'it'|'en'; valueMode:
@@ -249,9 +276,14 @@ Warnings: `tfrBackToCompany` (a later phase sends less TFR to the fund than an e
 
 ## 8. PWA
 - Manifest: name "FIRE Planner Italia", icons purpose `any` (existing PNGs), lang/dir, start_url `/`.
-- SW (`public/sw.js`): versioned cache, precache `/`, manifest, icons; cache-first for `/_next/static/`;
-  network-first for navigations with cached `/` fallback; never cache non-OK responses. Registered in a client
-  effect immediately (no `load` listener), skipped in development.
+- SW (`public/sw.js`): cache named after a content hash of the build; precache `/`, manifest, icons and every
+  file of the build (list injected into `out/sw.js` by `scripts/sw-precache.mjs`, the `postbuild` step; the page
+  also posts the asset URLs it loaded, so one online visit is enough even without the list); old caches and stale
+  chunks are deleted on activate. Cache-first for `/_next/static/` (worker scripts answered with a URL-less copy so
+  Turbopack's `#params=` worker bootstrap keeps its fragment); only the app page (`/`, `/index.html`, any query
+  string) is handled for navigations: network-first, cached shell when offline, on 5xx or after 4 s; redirected
+  responses stored without the redirect flag; never cache non-OK responses. Registered in a client effect
+  immediately (no `load` listener), skipped in development. Deploy with `npm run build` (not `npx next build`).
 
 ## 9. Testing
 - Unit (vitest): payroll vs hand-computed 2026 cases (35k/48k/60k RAL, ≤20k cuneo case, >56,224 INPS case,
@@ -264,4 +296,6 @@ Warnings: `tfrBackToCompany` (a later phase sends less TFR to the fund than an e
 - i18n key parity + used-keys test.
 - E2E smoke (`npm run e2e`, plain Node + preinstalled `playwright`): loads without console errors, FI age visible,
   EN toggle leaves no Italian strings in main UI, 375px and 1440px no horizontal overflow, edit a field → result
-  changes, reload → edit persisted, service worker registered in production build.
+  changes, reload → edit persisted, service worker registered in production build, offline reload with the
+  analysis still in the Web Worker, offline cold start in a fresh browser after one online visit, headline numbers
+  equal to the engine's, no console errors during the whole run.

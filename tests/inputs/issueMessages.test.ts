@@ -100,21 +100,14 @@ describe('formatIssueParams', () => {
   });
 });
 
-describe('refineIssue (UX-12: RITA with the default access age)', () => {
-  it('blames the access age, not the retirement age, when RITA is chosen with an access age at the pension age', async () => {
-    const { createDefaultPlan } = await import('@/lib/engine');
-    const { refineIssue } = await import('@/app/components/inputs/model/issueFormat');
+describe('pfOrdinaryBenefitLateAccess (UX-12: RITA with the default access age)', () => {
+  it('the engine blames the access age and the message names the age to change', async () => {
+    const { createDefaultPlan, runPlan } = await import('@/lib/engine');
     const plan = createDefaultPlan();
-    const issue = { level: 'info' as const, path: 'pensionFund.accessMode', code: 'pfOrdinaryBenefit', params: { age: 67 } };
-    const rita = { ...plan, pensionFund: { ...plan.pensionFund, accessMode: 'rita' as const, accessAge: 67 } };
-    const refined = refineIssue(issue, rita);
-    expect(refined.code).toBe('pfOrdinaryBenefitLateAccess');
-    expect(refined.params).toMatchObject({ accessAge: 67, oldAge: plan.taxRules.statePension.oldAgeAge, ritaAge: 62 });
-    const text = dropUnfilled(MESSAGES.it[`issues.${refined.code}`]);
+    plan.pensionFund = { ...plan.pensionFund, accessMode: 'rita', accessAge: 67 };
+    const issue = runPlan(plan).issues.find((i) => i.code === 'pfOrdinaryBenefitLateAccess');
+    expect(issue).toMatchObject({ path: 'pensionFund.accessAge', params: { accessAge: 67, oldAge: plan.taxRules.statePension.oldAgeAge, ritaAge: 62 } });
+    const text = dropUnfilled(MESSAGES.it['issues.pfOrdinaryBenefitLateAccess']);
     expect(text).toContain('età di accesso');
-    // Other causes keep the engine message.
-    expect(refineIssue(issue, { ...rita, pensionFund: { ...rita.pensionFund, accessAge: 63 } })).toBe(issue);
-    expect(refineIssue(issue, plan)).toBe(issue);
-    expect(refineIssue(issue, null)).toBe(issue);
   });
 });

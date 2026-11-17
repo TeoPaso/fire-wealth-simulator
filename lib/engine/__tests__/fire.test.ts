@@ -114,6 +114,27 @@ describe('runPlan — modes and validation', () => {
     expect(r.issues.some((i) => i.code === 'negativeSavingsWhileWorking')).toBe(false);
   });
 
+  it('RITA with an access age at the old-age pension blames the access age (not the retirement age)', () => {
+    const plan = basePlan();
+    const oldAge = plan.taxRules.statePension.oldAgeAge;
+    plan.pensionFund = { ...plan.pensionFund, enabled: true, accessMode: 'rita', accessAge: oldAge };
+    const late = runPlan(plan).issues.filter((i) => i.code.startsWith('pfOrdinaryBenefit'));
+    expect(late).toEqual([
+      {
+        level: 'info',
+        path: 'pensionFund.accessAge',
+        code: 'pfOrdinaryBenefitLateAccess',
+        params: { age: expect.any(Number), accessAge: oldAge, oldAge, ritaAge: oldAge - plan.taxRules.pensionFund.ritaMaxYearsEarly },
+      },
+    ]);
+    // An earlier access age with work going on to the old-age pension: the retirement age is the cause.
+    plan.pensionFund.accessAge = oldAge - 4;
+    plan.retirement = { mode: 'fixedAge', fixedAge: oldAge };
+    const codes = runPlan(plan).issues.map((i) => i.code);
+    expect(codes).toContain('pfOrdinaryBenefit');
+    expect(codes).not.toContain('pfOrdinaryBenefitLateAccess');
+  });
+
   it('throws PlanValidationError with the issues when the plan has errors', () => {
     const plan = basePlan();
     plan.portfolio.assets[0].allocationPct = 50;

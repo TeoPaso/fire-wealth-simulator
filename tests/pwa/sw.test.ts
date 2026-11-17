@@ -16,13 +16,20 @@ type Req = { url: string; method?: string; mode?: string };
 const keyOf = (k: string | Req) => (typeof k === 'string' ? new URL(k, ORIGIN).href : k.url);
 const noSearch = (href: string) => href.split('?')[0];
 
+/** Like the Cache API, a cached copy keeps the URL of the response that was stored. */
+function cachedCopy(response: Response): Response {
+  const copy = response.clone();
+  if (response.url) Object.defineProperty(copy, 'url', { value: response.url });
+  return copy;
+}
+
 class FakeCache {
   entries = new Map<string, Response>();
   async match(key: string | Req, opts: { ignoreSearch?: boolean } = {}) {
     const href = keyOf(key);
-    if (this.entries.has(href)) return this.entries.get(href)!.clone();
+    if (this.entries.has(href)) return cachedCopy(this.entries.get(href)!);
     if (opts.ignoreSearch) {
-      for (const [k, v] of this.entries) if (noSearch(k) === noSearch(href)) return v.clone();
+      for (const [k, v] of this.entries) if (noSearch(k) === noSearch(href)) return cachedCopy(v);
     }
     return undefined;
   }
@@ -93,11 +100,11 @@ function loadWorker(opts: { build?: { version: string; urls: string[] }; network
     await Promise.all(pending);
   };
   /** Dispatches a fetch; resolves with the response given to respondWith, or null when the worker passed. */
-  const request = async (url: string, mode = 'no-cors') => {
+  const request = async (url: string, mode = 'no-cors', destination = '') => {
     let answer: Promise<Response> | null = null;
     const pending: Promise<unknown>[] = [];
     handlers.fetch({
-      request: { url: new URL(url, ORIGIN).href, method: 'GET', mode },
+      request: { url: new URL(url, ORIGIN).href, method: 'GET', mode, destination },
       respondWith: (p: Promise<Response>) => {
         answer = p;
       },
@@ -160,6 +167,27 @@ describe('service worker', () => {
     expect([...cache.entries.keys()].some((k) => k.includes('evil') || k.includes('/other/'))).toBe(false);
     network.current = offline;
     expect(await (await sw.request('/_next/static/chunks/app.js'))?.text()).toBe('app');
+  });
+
+  it('answers a worker script with a URL-less copy, so the worker keeps the "#params=" fragment of its URL', async () => {
+    // A real cached response carries the URL it was stored under (without the fragment): the worker would take it as
+    // its location and Turbopack's bootstrap would miss its config.
+    const withUrl = (body: string, url: string) => {
+      const res = new Response(body, { status: 200, headers: { 'content-type': 'text/javascript' } });
+      Object.defineProperty(res, 'url', { value: url });
+      return res;
+    };
+    const network = { current: (async (req) => withUrl(new URL(req.url).pathname, req.url)) as Network };
+    const build = { version: 'w1', urls: ['_next/static/chunks/turbopack-worker-abc.js', '_next/static/chunks/app.js'] };
+    const sw = loadWorker({ build, network });
+    await sw.lifecycle('install');
+    network.current = offline;
+    const worker = await sw.request('/_next/static/chunks/turbopack-worker-abc.js', 'same-origin', 'worker');
+    expect(worker?.url).toBe('');
+    expect(worker?.headers.get('content-type')).toBe('text/javascript');
+    expect(await worker?.text()).toBe('/_next/static/chunks/turbopack-worker-abc.js');
+    const script = await sw.request('/_next/static/chunks/app.js', 'no-cors', 'script');
+    expect(script?.url).toBe(`${ORIGIN}/_next/static/chunks/app.js`);
   });
 
   it('stores a redirected shell without the redirect flag (hosts redirecting /index.html → /)', async () => {

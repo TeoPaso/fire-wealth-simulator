@@ -50,6 +50,14 @@ const it = {
   'results.headline.notReachableHint':
     'Prova a ridurre le spese, aumentare il risparmio o rivedere le ipotesi di rendimento nel pannello Dati.',
   'results.headline.fallbackAge': 'Il piano mostrato smette di lavorare all’età della pensione INPS: {age} anni.',
+  'results.headline.cashGap': 'A {age} anni, mentre lavori ancora, i soldi accessibili non bastano per le spese dell’anno: mancano {amount} (€ di oggi)',
+  'results.headline.cashGapHint':
+    'Con questo buco nessuna età di ritiro può funzionare: non è l’obiettivo FI a mancare. Quell’anno le spese superano le entrate e i risparmi: riducile o risparmia di più negli anni prima.',
+  'results.headline.cashGapHintEvent':
+    'Con questo buco nessuna età di ritiro può funzionare: non è l’obiettivo FI a mancare. Riduci o rinvia la spesa «{event}», oppure, se è un acquisto finanziato, inseriscila come anticipo più rate (un evento di più anni).',
+  'results.headline.fixedDepletesWorking': 'i soldi accessibili finiscono già a {age} anni, mentre lavori ancora',
+  'results.headline.cashGapAmount': 'Quell’anno mancano {amount} (€ di oggi).',
+  'results.headline.fixedNoAgeGap': 'Per lo stesso motivo nessuna età di ritiro calcolata funziona.',
   'results.headline.confidentHelp':
     'Prima età di ritiro per cui almeno questa quota delle {runs} simulazioni Monte Carlo non resta mai senza soldi accessibili.',
   'results.headline.confidentNone': 'nessuna età fino a {age} anni',
@@ -100,11 +108,11 @@ const it = {
   'results.wealth.description': 'Patrimonio accessibile e vincolato all’inizio di ogni età, scenario deterministico.',
   'results.wealth.aria': 'Grafico ad aree del patrimonio netto dai {from} ai {to} anni, diviso in accessibile e vincolato. Al ritiro, a {age} anni, il patrimonio netto è {atRetirement} ({unit}).',
   'results.wealth.footer':
-    'Accessibile = liquidità + investimenti al netto delle imposte sulle plusvalenze latenti. Vincolato = fondo pensione e TFR in azienda al netto delle imposte di uscita: non si possono usare prima dello sblocco.',
+    'Accessibile = liquidità + investimenti al netto delle imposte sulle plusvalenze latenti. Vincolato = fondo pensione e TFR in azienda al netto delle imposte di uscita (non si possono usare prima dello sblocco) e, dopo l’accesso al fondo, il valore della rendita ancora da incassare.',
   'results.wealth.shortfallLegend': 'Spese non coperte',
   'results.wealth.ariaShortfall': 'Spese non coperte a {ages} anni.',
   'results.wealth.shortfallNote': 'Le zone evidenziate come «Spese non coperte» sono gli anni in cui i soldi accessibili sono finiti e le entrate non coprono le spese ({ages} anni). Il dettaglio è in Flussi e in Anno per anno.',
-  'results.wealth.annuityNote': 'A {age} anni il {pct} del fondo pensione diventa una rendita a vita: da lì non conta più come patrimonio ma come entrata annua (vedi Flussi). Per questo il patrimonio scende.',
+  'results.wealth.annuityNote': 'A {age} anni il {pct} del fondo pensione diventa una rendita a vita: da lì il patrimonio vincolato ne conta il valore attuale, cioè le rate nette ancora da incassare fino alla fine dell’orizzonte, che scende ogni anno man mano che le ricevi (le rate sono in Flussi).',
 
   'results.fan.title': 'Monte Carlo: patrimonio netto',
   'results.fan.titleAccessible': 'Monte Carlo: patrimonio accessibile',
@@ -157,6 +165,8 @@ const it = {
     'Con i rendimenti attesi il patrimonio accessibile copre le spese fino ai {age} anni e restano {amount} di patrimonio netto (€ di oggi).',
   'results.insight.depletion':
     'Il patrimonio accessibile si esaurisce a {age} anni: da quell’età le entrate non coprono più le spese.',
+  'results.insight.cashGap':
+    'A {age} anni, mentre lavori ancora, stipendio e risparmi accessibili non coprono le spese dell’anno (mancano {amount}, € di oggi): il problema è questo buco di liquidità, non il ritiro.',
   'results.insight.bridge':
     'Dai {from} ai {to} anni ({years}) vivrai solo del patrimonio accessibile: fondo pensione e pensione INPS non sono ancora disponibili.',
   'results.insight.noBridge': 'Quando smetti di lavorare puoi già contare su fondo pensione o pensione INPS.',
@@ -370,7 +380,7 @@ const it = {
     'L’età FIRE e i grafici principali usano rendimenti e inflazione costanti. Il Monte Carlo ripete il piano con rendimenti e inflazione casuali per stimare la probabilità di successo e l’età che raggiunge il tuo obiettivo.',
   'results.assumptions.conv.locked.title': 'Accessibile e vincolato',
   'results.assumptions.conv.locked.body':
-    'Accessibile: liquidità e investimenti, al netto delle imposte sulle plusvalenze. Vincolato: fondo pensione e TFR in azienda, al netto delle imposte di uscita, utilizzabili solo allo sblocco (pensione, RITA, riscatto, fine del lavoro).',
+    'Accessibile: liquidità e investimenti, al netto delle imposte sulle plusvalenze. Vincolato: fondo pensione e TFR in azienda, al netto delle imposte di uscita, utilizzabili solo allo sblocco (pensione, RITA, riscatto, fine del lavoro); dopo l’accesso al fondo anche il valore attuale della rendita ancora da incassare, che si riceve solo come rata annua.',
   'results.assumptions.conv.startOfAge.title': 'Patrimonio per età',
   'results.assumptions.conv.startOfAge.body':
     'Nei grafici il patrimonio è mostrato all’inizio di ogni età (cioè a fine dell’anno precedente): il valore all’età di ritiro è quello con cui smetti di lavorare.',
@@ -465,6 +475,14 @@ const en: Record<keyof typeof it, string> = {
   'results.headline.notReachableHint':
     'Try lowering spending, saving more or reviewing the return assumptions in the Data panel.',
   'results.headline.fallbackAge': 'The plan shown stops working at the state-pension age: {age}.',
+  'results.headline.cashGap': 'At age {age}, while you are still working, your accessible money does not cover the year’s spending: {amount} is missing (today’s €)',
+  'results.headline.cashGapHint':
+    'With this gap no retirement age can work: it is not the FI target that is out of reach. That year spending exceeds income and savings: reduce it or save more in the years before.',
+  'results.headline.cashGapHintEvent':
+    'With this gap no retirement age can work: it is not the FI target that is out of reach. Reduce or postpone the expense “{event}” or, if it is a financed purchase, enter it as a down payment plus instalments (an event lasting several years).',
+  'results.headline.fixedDepletesWorking': 'your accessible money already runs out at {age}, while you are still working',
+  'results.headline.cashGapAmount': 'That year {amount} is missing (today’s €).',
+  'results.headline.fixedNoAgeGap': 'For the same reason no computed retirement age works.',
   'results.headline.confidentHelp':
     'Earliest retirement age at which at least this share of the {runs} Monte Carlo simulations never runs out of accessible money.',
   'results.headline.confidentNone': 'no age up to {age}',
@@ -514,11 +532,11 @@ const en: Record<keyof typeof it, string> = {
   'results.wealth.description': 'Accessible and locked wealth at the start of each age, deterministic scenario.',
   'results.wealth.aria': 'Area chart of net worth from age {from} to {to}, split into accessible and locked. At retirement, at {age}, net worth is {atRetirement} ({unit}).',
   'results.wealth.footer':
-    'Accessible = cash + investments net of the tax on unrealised gains. Locked = pension fund and TFR held by the employer, net of exit taxes: they cannot be used before they unlock.',
+    'Accessible = cash + investments net of the tax on unrealised gains. Locked = pension fund and TFR held by the employer, net of exit taxes (they cannot be used before they unlock) and, after the fund is accessed, the value of the annuity still to be received.',
   'results.wealth.shortfallLegend': 'Spending not covered',
   'results.wealth.ariaShortfall': 'Spending not covered at age {ages}.',
   'results.wealth.shortfallNote': 'The areas marked “Spending not covered” are the years in which accessible money has run out and income does not cover spending (age {ages}). See Flows and Year by year for the details.',
-  'results.wealth.annuityNote': 'At {age}, {pct} of the pension fund becomes a lifetime annuity: from then on it counts as yearly income, not wealth (see Flows). That is why wealth drops.',
+  'results.wealth.annuityNote': 'At {age}, {pct} of the pension fund becomes a lifetime annuity: from then on locked wealth counts its present value, i.e. the net payments still to be received until the end of the horizon, which falls every year as you receive them (the payments are in Flows).',
 
   'results.fan.title': 'Monte Carlo: net worth',
   'results.fan.titleAccessible': 'Monte Carlo: accessible wealth',
@@ -570,6 +588,8 @@ const en: Record<keyof typeof it, string> = {
   'results.insight.lasts':
     'With expected returns your accessible wealth covers spending until age {age}, leaving {amount} of net worth (today’s €).',
   'results.insight.depletion': 'Your accessible wealth runs out at age {age}: from then on income no longer covers spending.',
+  'results.insight.cashGap':
+    'At age {age}, while you are still working, your salary and accessible savings do not cover the year’s spending ({amount} missing, today’s €): the problem is this cash gap, not retirement.',
   'results.insight.bridge':
     'From age {from} to {to} ({years}) you live on accessible wealth only: the pension fund and the state pension are not available yet.',
   'results.insight.noBridge': 'When you stop working you can already count on the pension fund or the state pension.',
@@ -782,7 +802,7 @@ const en: Record<keyof typeof it, string> = {
     'The FIRE age and the main charts use constant returns and inflation. Monte Carlo repeats the plan with random returns and inflation to estimate the probability of success and the age that meets your target.',
   'results.assumptions.conv.locked.title': 'Accessible and locked',
   'results.assumptions.conv.locked.body':
-    'Accessible: cash and investments, net of the tax on gains. Locked: pension fund and TFR held by the employer, net of exit taxes, usable only once unlocked (retirement, RITA, redemption, end of employment).',
+    'Accessible: cash and investments, net of the tax on gains. Locked: pension fund and TFR held by the employer, net of exit taxes, usable only once unlocked (retirement, RITA, redemption, end of employment); after the fund is accessed, also the present value of the annuity still to be received, which is paid only as a yearly instalment.',
   'results.assumptions.conv.startOfAge.title': 'Wealth by age',
   'results.assumptions.conv.startOfAge.body':
     'Charts show wealth at the start of each age (that is, at the end of the previous year): the value at the retirement age is what you stop working with.',

@@ -257,7 +257,24 @@ export function postRunIssues(prep: PreparedPlan, sim: SimulationResult): Issue[
       });
     }
     if (access.ordinaryBenefitFallback) {
-      issues.push({ level: 'info', path: 'pensionFund.accessMode', code: 'pfOrdinaryBenefit', params: { age: access.startAge } });
+      const pf = plan.pensionFund;
+      if (pf.accessMode === 'rita' && pf.accessAge >= prep.oldAgeAge) {
+        // RITA is ruled out by the access age itself (not before the old-age pension), whatever the retirement age:
+        // the field to change is the access age, from the earliest RITA age.
+        issues.push({
+          level: 'info',
+          path: 'pensionFund.accessAge',
+          code: 'pfOrdinaryBenefitLateAccess',
+          params: {
+            age: access.startAge,
+            accessAge: pf.accessAge,
+            oldAge: prep.oldAgeAge,
+            ritaAge: prep.oldAgeAge - rules.pensionFund.ritaMaxYearsEarly,
+          },
+        });
+      } else {
+        issues.push({ level: 'info', path: 'pensionFund.accessMode', code: 'pfOrdinaryBenefit', params: { age: access.startAge } });
+      }
     }
     if (access.ritaDelayed) {
       issues.push({ level: 'info', path: 'pensionFund.accessAge', code: 'ritaDelayedToRetirement', params: { age: access.startAge } });

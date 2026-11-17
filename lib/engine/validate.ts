@@ -70,6 +70,9 @@ export const ISSUE_CODES = [
   'tfrPartialCheckContract', // 0 < tfrToFundPct < 100
   'redemptionFallbackRita', // post-run {age, redemptionAge}
   'pfOrdinaryBenefit', // post-run: RITA/redemption impossible after the old-age age → ordinary benefit {age}
+  // post-run: RITA chosen with an access age not before the old-age pension → ordinary benefit
+  // {age, accessAge, oldAge, ritaAge (earliest RITA access age)}
+  'pfOrdinaryBenefitLateAccess',
   'ritaDelayedToRetirement', // post-run: RITA starts when work stops, after accessAge {age}
   'statePensionAfterHorizon', // post-run: state pension claimed after lifeExpectancy {age}
 ] as const;

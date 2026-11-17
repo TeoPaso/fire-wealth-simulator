@@ -474,43 +474,97 @@ Anche questi rilievi vengono da [docs/AUDIT-v1.md](docs/AUDIT-v1.md).
   → Respinto in verifica: le quote parziali sono ammesse se il CCNL o il fondo prevedono una quota minima. La v2 lo
   spiega con l'informazione `tfrPartialCheckContract`.
 
-### Revisione prima del rilascio (UX e robustezza)
-
-- **Risultato in evidenza onesto.** L'intestazione mostra affiancate l'età "nello scenario medio" e quella che
-  raggiunge la probabilità obiettivo (Monte Carlo), con un giudizio colorato (verde, ambra, rosso) sulla
-  probabilità di successo; se è sotto l'obiettivo, il primo punto di "Cosa significa" è il rischio. Con "Età fissa"
-  l'intestazione risponde alla domanda "posso smettere a N anni?". Un Monte Carlo calcolato per un'altra età non
-  viene più mostrato con la nuova etichetta.
-- **Grafici.** Il Monte Carlo mostra per default il patrimonio accessibile (su cui si misura il successo), con il
-  ponte fino allo sblocco evidenziato e un selettore per il patrimonio netto. Gli anni con spese non coperte sono
-  in rosso nel grafico del patrimonio e nei flussi della pensione. Nota sulla quota del fondo convertita in
-  rendita. Le etichette della sensibilità dicono di quanto varia ogni ipotesi ("±1 p.p.").
-- **Primo utilizzo.** Il piano di esempio è dichiarato come tale, con i quattro dati da inserire per primi
-  (spuntati quando li cambi). Le sezioni sono raggruppate in essenziali, dettagli e avanzate. Cambiando l'età
-  attuale l'app propone di spostare le fasi di carriera (con annulla). Le note dei piani convertiti dalla v1
-  (età ipotizzata, spese stimate…) sono mostrate e modificabili.
-- **Inserimento.** I campi numerici confermano il valore quando smetti di scrivere, premi Invio o esci dal
-  campo, non a ogni tasto. Le spiegazioni "?" non si aprono più solo passandoci con il tasto Tab. Dopo
-  un'eliminazione il focus resta nell'elenco. Su telefono ogni pannello ricorda la sua posizione, la barra in
-  basso mostra l'età FIRE e non copre più il campo attivo. Campi del fondo pensione disattivati quando il fondo è
-  spento.
-- **Dati salvati e importati.** Testi non validi (per esempio un nome che non è un testo) vengono convertiti,
-  dopo una copia di sicurezza, invece di bloccare l'app; un errore imprevisto mostra comunque "Esporta i dati".
-  "Ripristina gli esempi" non cancella più i piani se la copia di sicurezza non si può scrivere. Le copie di
-  sicurezza (al massimo 5) si possono ripristinare, scaricare o eliminare dal menu. Importazioni troppo grandi o
-  complesse vengono rifiutate con un messaggio. Con più schede aperte una modifica non salvata non va più persa, e
-  ogni scheda tiene il suo piano attivo, lingua e unità.
-- **Offline e prestazioni.** L'app parte offline dopo una sola visita online: l'elenco dei file viene generato
-  dopo la build (`scripts/sw-precache.mjs`) e la versione della cache dipende dal contenuto. Il service worker
-  risponde solo alla pagina dell'app, usa la copia in cache se la rete è lenta o il sito risponde 5xx, e non
-  accumula file vecchi. Le analisi Monte Carlo superate vengono interrotte; le schede in background non
-  ricalcolano. I grafici si caricano a parte, dopo il pannello dei dati.
-
 ### Limiti noti
 
 Le semplificazioni del modello, per esempio i coefficienti di trasformazione fissi, la rendita del fondo non
 rivalutata, gli strumenti solo ad accumulazione e una sola persona senza familiari, sono elencate in
 [docs/METODOLOGIA.md](docs/METODOLOGIA.md#16-semplificazioni-e-limiti-noti).
+
+### Revisione post-rilascio
+
+Una revisione indipendente del motore, dell'interfaccia e della robustezza ha trovato altri problemi. Quelli
+corretti sono elencati qui sotto, ognuno con nuovi test; in fondo ci sono i due punti ancora aperti.
+
+**Calcoli (motore).**
+- **Buco di liquidità mentre lavori.** Se i soldi accessibili non bastano in un anno di lavoro (per esempio un
+  acquisto più grande dei risparmi), ogni età di ritiro successiva fallisce in quello stesso anno. Prima l'app
+  diceva solo "non raggiungi l'indipendenza finanziaria". Ora c'è l'avviso `shortfallWhileWorking` con l'età,
+  l'importo che manca (€ di oggi) e l'evento più grande dell'anno. Il riquadro principale nomina questo buco invece
+  dell'età FI mancante, e tra le osservazioni compare come buco di liquidità, non come esaurimento da ritirato. Il
+  motore non presta soldi: un acquisto finanziato si inserisce come anticipo più rate.
+- **Montante INPS.** Il montante contributivo cresce sulla stessa base su cui si pagano i contributi: RAL più
+  premio ordinario o di produttività, fino al massimale. Prima contava solo la RAL. Gli anni di contributi contano
+  solo gli anni di lavoro con una retribuzione: una pausa di carriera con RAL 0 non vale più come anno di
+  contributi, e la pensione può spostarsi all'età di ripiego (71 anni).
+- **Rendita del fondo pensione nel patrimonio.** Dopo l'accesso, la parte convertita in rendita conta nel
+  patrimonio bloccato al valore attuale delle rate ancora da incassare (`pensionAnnuityValue`). Prima spariva dal
+  patrimonio, che crollava di colpo all'età di accesso.
+- **Versamenti "fino al limite deducibile".** Il versamento volontario riempie solo lo spazio davvero deducibile,
+  che è limitato anche dal reddito. In un anno senza stipendio non si trattiene più nulla.
+- **Inflazione Monte Carlo.** L'inflazione casuale è tagliata a ±3 deviazioni standard intorno alla media, non
+  più all'intervallo fisso da −3% a 15%. Così media e mediana restano uguali all'inflazione inserita anche con
+  valori alti o negativi: prima un'inflazione del 20% diventava in media del 15%.
+- **Migrazione dalla v1.** Il risparmio fiscale del fondo pensione della v1 non viene più contato come risparmio:
+  le spese stimate dei piani convertiti ora quadrano con il netto in busta paga.
+- **RITA con l'età di accesso alla pensione di vecchiaia.** Il motore dice che è l'età di accesso a impedire la
+  RITA, e da quale età è possibile (nuova informazione `pfOrdinaryBenefitLateAccess`, sul campo "età di
+  accesso"). Prima il messaggio parlava dell'età di ritiro.
+
+**Risultati e interfaccia.**
+- **Risultato in evidenza onesto.** Il riquadro principale mostra affiancate l'età "nello scenario medio" e quella
+  che raggiunge la probabilità obiettivo (Monte Carlo), con un giudizio colorato (verde, ambra, rosso) sulla
+  probabilità di successo. Se la probabilità è sotto l'obiettivo, il primo punto di "Cosa significa" è il rischio.
+  Con "Età fissa" il riquadro risponde alla domanda "posso smettere a N anni?". Un Monte Carlo calcolato per
+  un'altra età non viene più mostrato con la nuova etichetta.
+- **Grafici.** Il Monte Carlo mostra per default il patrimonio accessibile (su cui si misura il successo), con il
+  ponte fino allo sblocco evidenziato e un selettore per il patrimonio netto. Gli anni con spese non coperte sono
+  in rosso nel grafico del patrimonio e nei flussi della pensione. Una nota spiega la quota del fondo convertita
+  in rendita. Le etichette della sensibilità dicono di quanto varia ogni ipotesi ("±1 p.p.").
+- **Primo utilizzo.** Il piano di esempio è dichiarato come tale, con i quattro dati da inserire per primi
+  (spuntati quando li cambi). Le sezioni sono raggruppate in essenziali, dettagli e avanzate. Se cambi l'età
+  attuale, l'app propone di spostare le fasi di carriera (con annulla). Le note dei piani convertiti dalla v1 (età
+  ipotizzata, spese stimate…) sono mostrate in cima ai dati e modificabili.
+- **Inserimento.** I campi numerici confermano il valore quando smetti di scrivere, premi Invio o esci dal campo,
+  non a ogni tasto. Le spiegazioni "?" non si aprono più solo passandoci con il tasto Tab. Dopo un'eliminazione il
+  focus resta nell'elenco. Su telefono ogni pannello ricorda la sua posizione, la barra in basso mostra l'età FI e
+  non copre più il campo attivo. I campi del fondo pensione sono disattivati quando il fondo è spento.
+
+**Dati salvati e importati.**
+- Un valore del tipo sbagliato (per esempio un nome che non è un testo) viene convertito dopo una copia di
+  sicurezza, invece di bloccare l'app. Un errore imprevisto mostra comunque "Esporta i dati".
+- "Ripristina gli esempi" non cancella più i piani se la copia di sicurezza non si può scrivere. Le copie di
+  sicurezza (al massimo 5) si possono ripristinare, scaricare o eliminare dal menu.
+- Importazioni troppo grandi o complesse vengono rifiutate con un messaggio.
+- Con più schede aperte una modifica non salvata non va più persa, e ogni scheda tiene il suo piano attivo, lingua
+  e unità.
+
+**Offline e prestazioni.**
+- L'app parte offline dopo una sola visita online: l'elenco dei file viene generato dopo la build
+  (`scripts/sw-precache.mjs`, eseguito da `npm run build`) e la versione della cache dipende dal contenuto. Il
+  service worker risponde solo alla pagina dell'app, usa la copia in cache se la rete è lenta o il sito risponde
+  5xx, e non accumula file vecchi.
+- Il Web Worker del Monte Carlo parte anche quando il suo file arriva dalla cache del service worker. Prima,
+  dalla seconda visita, falliva ("Missing worker bootstrap config") e il calcolo ripiegava sul thread principale.
+- Le analisi Monte Carlo superate vengono interrotte, e le schede in background non ricalcolano. I grafici si
+  caricano a parte, dopo il pannello dei dati.
+
+**Documentazione.** SPEC e METODOLOGIA descrivono il comportamento attuale: busta paga (trattamento integrativo
+nel netto, spazio deducibile), RITA rinviata al ritiro, età della pensione mai prima del ritiro, plusvalenze
+calcolate a metà anno, inflazione Monte Carlo, valore della rendita, nuovi codici di avviso e service worker.
+
+**Effetto sui piani di esempio.**
+- *Base*: età FI 48 anni e 51 con il 90% di probabilità, come prima. Probabilità di successo a 48 anni 61,1%
+  (prima 60,6%). Numero FIRE invariato (514.286 €). Pensione INPS netta 17.161 € l'anno in € di oggi (prima
+  16.191 €, ora con il premio nel montante).
+- *Prudente*: età FI 52 anni (prima 53) e 55 con il 90%, come prima. La probabilità di successo all'età FI è 53,3%
+  (prima 64,0%, ma a 53 anni).
+- *Ottimista*: 47 e 50 anni, come prima; probabilità 65,9% (prima 65,1%).
+
+**Ancora aperto.**
+- Le note dei piani convertiti dalla v1 sono testo in italiano anche con l'interfaccia in inglese (la v1 era solo
+  in italiano). Non diventano ancora informazioni accanto ai singoli campi.
+- Un versamento volontario "importo fisso" in un anno senza stipendio resta nel fondo (corretto: non è
+  deducibile), ma l'anteprima della busta paga mostra un netto negativo.
 
 ## 1.0.0 — 2026-08-15
 

@@ -520,13 +520,17 @@ async function main() {
       expectEqual(state, 'active:/sw.js', 'service worker');
     });
 
-    await step('works offline after reloading (service worker cache)', async () => {
+    await step('works offline after reloading (service worker cache), analysis still in the Web Worker', async () => {
       offline = true;
       await context.setOffline(true);
       try {
         await page.reload({ waitUntil: 'load' });
         await waitForResults(page);
         await waitForAnalysis(page);
+        // The worker script now comes from the service worker's cache: it must still start (Turbopack's bootstrap
+        // reads its config from the "#params=" fragment of the worker URL), not fall back to the main thread.
+        const engineUsed = await page.locator('[data-testid="analysis-status"]').getAttribute('data-engine');
+        expectEqual(engineUsed, 'worker', 'analysis engine offline');
       } finally {
         await context.setOffline(false);
         offline = false;

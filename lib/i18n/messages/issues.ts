@@ -61,7 +61,7 @@ const it = {
     'Quasi tutto il portafoglio è in un solo strumento azionario (oltre il {max}%): va bene se è un ETF globale molto diversificato, altrimenti valuta di diversificare.',
   'issues.negativeSavingsWhileWorking':
     'Mentre lavori le uscite superano le entrate (la prima volta a {age} anni): il piano usa i risparmi già prima del ritiro.',
-  'issues.shortfallWhileWorking': 'I soldi accessibili finiscono mentre lavori ancora (a {age} anni mancano circa {amount} € di oggi) e le spese di quell’anno non sono coperte (evento «{event}»): nessuna età di ritiro può funzionare finché non riduci quella spesa o aumenti i risparmi.',
+  'issues.shortfallWhileWorking': 'Mentre lavori ancora, i soldi accessibili non bastano a coprire le spese dell’anno (a {age} anni mancano circa {amount} € di oggi): con questo buco nessuna età di ritiro può funzionare, quindi non è l’obiettivo FI a mancare. Riduci o rinvia la spesa (qui l’evento «{event}»), risparmia di più negli anni prima, oppure inserisci un acquisto finanziato come anticipo più rate (un evento di più anni).',
   'issues.bonusAboveCap':
     'Il premio supera il tetto agevolato (tetto {cap} €, dai {age} anni): la parte in più è tassata come stipendio.',
   'issues.bonusIneligibleIncome':
@@ -146,7 +146,7 @@ const en: Record<keyof typeof it, string> = {
     'Almost all the portfolio is in a single equity instrument (above {max}%): fine if it is a well-diversified global ETF, otherwise consider diversifying.',
   'issues.negativeSavingsWhileWorking':
     'While you work, outflows exceed inflows (first at age {age}): the plan uses savings even before you retire.',
-  'issues.shortfallWhileWorking': 'Your accessible money runs out while you are still working (at age {age} about €{amount} in today’s money is missing) and that year’s spending is not covered (event “{event}”): no retirement age can work until you reduce that expense or save more.',
+  'issues.shortfallWhileWorking': 'While you are still working, your accessible money does not cover the year’s spending (at age {age} about €{amount} in today’s money is missing): with this gap no retirement age can work, so it is not the FI target that is out of reach. Reduce or postpone the expense (here the event “{event}”), save more in the years before, or enter a financed purchase as a down payment plus instalments (an event lasting several years).',
   'issues.bonusAboveCap': 'The bonus exceeds the reduced-rate cap (cap €{cap}, from age {age}): the excess is taxed like salary.',
   'issues.bonusIneligibleIncome':
     'Last year’s income exceeds the limit for the reduced bonus tax (limit €{limit}, from age {age}): the bonus is taxed like salary.',

@@ -7,6 +7,8 @@
  *   compares with the target;
  * - 'fixedAge' mode: the answer to "can I stop at N?" — whether accessible money lasts, and the success rate —
  *   with the computed FI age as the secondary line (UX-07);
+ * - no FI age because the money runs out WHILE STILL WORKING (engine issue `shortfallWhileWorking`): the headline
+ *   names that cash gap (age, amount, event) instead of "FI not reachable", since no retirement age can fix it;
  * - then the success probability (toned), the FIRE number with progress, and the current savings rate.
  */
 import type { ReactNode } from 'react';
@@ -14,7 +16,7 @@ import { CircleAlert, CircleCheck, TriangleAlert } from 'lucide-react';
 import type { MonteCarloResult } from '@/lib/engine';
 import { useI18n } from '@/lib/i18n';
 import { Card, HelpTooltip, SERIES_COLORS, Skeleton, cn } from '../../ui';
-import { currentMonteCarlo, successTone, type SuccessTone } from '../model/overview';
+import { cashGapWhileWorking, currentMonteCarlo, successTone, type SuccessTone } from '../model/overview';
 import type { TabProps } from '../types';
 
 const TONE_STYLE: Record<SuccessTone, { box: string; text: string; icon: typeof CircleCheck }> = {
@@ -127,6 +129,13 @@ export function Headline({ data }: TabProps) {
   const progress = Math.max(0, Math.min(100, summary.progressPct));
   const ageText = (age: number) => t('results.ageValue', { age: format.num(age) });
   const R = summary.retirementAge;
+  const gap = cashGapWhileWorking(result);
+  const gapTitle = gap ? t('results.headline.cashGap', { age: format.num(gap.age), amount: format.eur(gap.amountToday) }) : '';
+  const gapHint = gap
+    ? gap.event !== null
+      ? t('results.headline.cashGapHintEvent', { event: gap.event })
+      : t('results.headline.cashGapHint')
+    : '';
   const tone = mc ? successTone(mc.successProbabilityPct, target) : null;
   const maxCandidate = mc ? Math.max(...mc.successByRetirementAge.map((s) => s.age), R) : R;
   const runs = format.num(plan.simulation.monteCarloRuns);
@@ -200,9 +209,16 @@ export function Headline({ data }: TabProps) {
           )}
         >
           {depletes
-            ? t('results.headline.fixedDepletes', { age: format.num(summary.depletionAge as number) })
+            ? t(gap ? 'results.headline.fixedDepletesWorking' : 'results.headline.fixedDepletes', {
+                age: format.num(summary.depletionAge as number),
+              })
             : t('results.headline.fixedLasts', { age: format.num(plan.profile.lifeExpectancy) })}
         </p>
+        {gap ? (
+          <p className="mt-1 text-sm text-slate-300" data-testid="cash-gap-hint">
+            {t('results.headline.cashGapAmount', { amount: format.eur(gap.amountToday) })} {gapHint}
+          </p>
+        ) : null}
         <p className="mt-2 text-sm text-slate-300">
           {summary.fiAge !== null ? (
             <>
@@ -215,7 +231,11 @@ export function Headline({ data }: TabProps) {
                 : null}
             </>
           ) : (
-            <span data-testid="fi-age">{t('results.headline.notReachable', { age: format.num(plan.profile.lifeExpectancy) })}</span>
+            <span data-testid="fi-age">
+              {gap
+                ? t('results.headline.fixedNoAgeGap')
+                : t('results.headline.notReachable', { age: format.num(plan.profile.lifeExpectancy) })}
+            </span>
           )}
         </p>
         {verdict}
@@ -243,9 +263,11 @@ export function Headline({ data }: TabProps) {
     hero = (
       <>
         <p className="text-2xl font-semibold leading-snug tracking-tight text-amber-100" data-testid="fi-age">
-          {t('results.headline.notReachable', { age: format.num(plan.profile.lifeExpectancy) })}
+          {gap ? gapTitle : t('results.headline.notReachable', { age: format.num(plan.profile.lifeExpectancy) })}
         </p>
-        <p className="mt-2 text-sm text-slate-300">{t('results.headline.notReachableHint')}</p>
+        <p className="mt-2 text-sm text-slate-300" data-testid={gap ? 'cash-gap-hint' : undefined}>
+          {gap ? gapHint : t('results.headline.notReachableHint')}
+        </p>
         <p className="mt-2 text-sm text-slate-400">{t('results.headline.fallbackAge', { age: format.num(R) })}</p>
         {verdict}
       </>

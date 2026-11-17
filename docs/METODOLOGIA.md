@@ -436,7 +436,9 @@ Quello che avanza dopo le spese va in liquidità o negli investimenti.
   - sotto `oldAgeAge − ritaMaxYearsEarly` (62 anni): avviso `ritaRequiresUnemployment`, perché è ammessa solo con
     più di 24 mesi di disoccupazione.
 - Se la RITA partirebbe a `oldAgeAge` o dopo, il fondo è pagato come prestazione ordinaria (informazione
-  `pfOrdinaryBenefit`).
+  `pfOrdinaryBenefit`). Se la causa è la stessa `accessAge`, cioè un'età di accesso non precedente a `oldAgeAge`
+  (per esempio i 67 anni proposti per la prestazione ordinaria), l'informazione è `pfOrdinaryBenefitLateAccess`:
+  punta all'età di accesso e indica da quale età la RITA è possibile (`oldAgeAge − ritaMaxYearsEarly`, 62 anni).
 
 **Riscatto totale per inoccupazione** (`accessMode: 'redemption'`, art. 14 c.2 lett. c D.Lgs. 252/2005).
 - Il 100% della posizione viene pagato all'età `R + redemptionAfterUnemployedYears` (4 anni dopo il ritiro) e
@@ -711,7 +713,13 @@ partenza (`startBalances`).
 - Gli anni di lavoro prima di R sono identici per tutte le età di ritiro. Un ammanco a un'età g mentre lavori fa
   quindi fallire ogni R > g: l'età FI è `null` anche se il piano, superato quell'anno, funzionerebbe. In questo
   caso `runPlan` aggiunge l'avviso `shortfallWhileWorking` (sezione 9) con l'età e l'importo che manca: è quello
-  da risolvere, non l'obiettivo FI.
+  da risolvere, non l'obiettivo FI. Il riquadro principale dei risultati lo dice al posto di "non raggiungi
+  l'indipendenza finanziaria" e, tra le osservazioni, l'ammanco compare come buco di liquidità mentre lavori, non
+  come esaurimento del patrimonio da ritirato.
+- Per lo stesso motivo un'età FI assente indica quasi sempre un ammanco in un anno di lavoro: con R =
+  `lifeExpectancy` tutti gli anni sono di lavoro, quindi fallisce solo se manca denaro mentre lavori. Se l'ammanco
+  cade dopo l'età della pensione INPS, nel piano mostrato (che smette di lavorare a quell'età, sezione 12.2)
+  compare come esaurimento da ritirato.
 
 ### 12.2 Età di ritiro del piano mostrato
 
@@ -872,8 +880,8 @@ avvisi, poi le informazioni.
 - **Le informazioni:**
   - piano: `montanteEstimated`, `bonusToFundDisabled`, `tfrPartialCheckContract` (quota di TFR tra 0 e 100%:
     ammessa se il CCNL o il fondo prevede una quota minima, o per chi lavorava prima del 29/04/1993);
-  - dopo la simulazione: `redemptionFallbackRita`, `pfOrdinaryBenefit`, `ritaDelayedToRetirement`,
-    `statePensionAfterHorizon`.
+  - dopo la simulazione: `redemptionFallbackRita`, `pfOrdinaryBenefit`, `pfOrdinaryBenefitLateAccess`,
+    `ritaDelayedToRetirement`, `statePensionAfterHorizon`.
 - **Limiti di modello** (`VALIDATION_LIMITS`):
   - età: età attuale 15–100 anni; orizzonte fino a 120 anni;
   - mercato: rendimenti tra −50% e 50%; volatilità 0–100%; costi 0–10%; inflazione tra −5% e 30%;

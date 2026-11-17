@@ -140,11 +140,14 @@ schermata Home"). Il service worker richiede HTTPS (oppure `localhost`).
 
 L'app parte con tre piani di esempio: *Base*, *Prudente* e *Ottimista*. Descrivono la stessa persona con
 ipotesi di mercato diverse. Duplica un esempio o creane uno nuovo dal selettore del piano nell'intestazione, poi
-compila le sezioni del pannello **Dati** nell'ordine. **Tutti gli importi si inseriscono in euro di oggi**: la
-crescita con l'inflazione la calcola l'app.
+compila le sezioni del pannello **Dati** nell'ordine. Finché usi un piano di esempio, in cima al pannello un
+riquadro ricorda che descrive una persona immaginaria ed elenca i quattro dati essenziali da cambiare (età,
+stipendio, spese, patrimonio), con un segno di spunta quando li hai cambiati. **Tutti gli importi si inseriscono
+in euro di oggi**: la crescita con l'inflazione la calcola l'app.
 
 1. **Profilo.** Età attuale, orizzonte del piano (l'età fino a cui simulare: scegli un valore prudente, per
-   esempio 95 anni) e anno di partenza.
+   esempio 95 anni) e anno di partenza. Se cambi l'età attuale, l'app propone di spostare dello stesso numero di
+   anni le età di fine delle fasi di carriera (con la possibilità di annullare).
 2. **Lavoro e carriera.** Una fase per ogni periodo della tua carriera, definita dall'età a cui finisce. Per ogni
    fase indica RAL, aumento reale annuo (oltre l'inflazione), mensilità, premio lordo annuo e come lo ricevi, il
    tuo contributo e quello del datore al fondo pensione (in % della RAL) e la quota di TFR al fondo. L'anteprima
@@ -177,10 +180,14 @@ Ogni sezione chiusa mostra un riepilogo di una riga. Gli **errori** (per esempio
 fermano il calcolo e sono elencati in alto, con un collegamento al campo. Gli **avvisi** e le **informazioni**
 non fermano il calcolo. Il piano viene salvato anche quando contiene errori, così puoi correggerlo con calma.
 
-Nel pannello **Risultati** trovi l'età FI e quella con la probabilità richiesta, la probabilità di successo, il
-numero FIRE, il patrimonio accessibile e bloccato nel tempo, i flussi e la busta paga di ogni anno, la tabella
-anno per anno, la sensibilità, il confronto tra piani e le ipotesi con le fonti. Monte Carlo e sensibilità si
-aggiornano in background poco dopo ogni modifica. Con il selettore **€ di oggi / Nominale** nell'intestazione
+Nel pannello **Risultati** trovi, affiancate, l'età FI nello scenario medio e quella con la probabilità
+richiesta, seguite da un giudizio colorato sulla probabilità di successo rispetto al tuo obiettivo; poi il
+numero FIRE, il patrimonio accessibile e bloccato nel tempo (con le zone di spese non coperte), il grafico Monte
+Carlo del patrimonio accessibile, i flussi e la busta paga di ogni anno, la tabella anno per anno, la
+sensibilità, il confronto tra piani e le ipotesi con le fonti. Con un'età di ritiro fissa il riquadro risponde a
+"posso smettere a quell'età?". Se i soldi finiscono mentre lavori ancora (per esempio per un acquisto più grande
+dei risparmi accessibili), il riquadro lo dice con l'età e l'importo che manca, invece di "età FI non
+raggiungibile". Monte Carlo e sensibilità si aggiornano in background poco dopo ogni modifica. Con il selettore **€ di oggi / Nominale** nell'intestazione
 scegli come vedere gli importi. Su schermi stretti, dati e risultati sono due schede separate.
 
 Come vengono fatti i calcoli, con formule e fonti: [docs/METODOLOGIA.md](docs/METODOLOGIA.md).
@@ -246,7 +253,7 @@ npm run typecheck    # tipi
 npm run lint         # ESLint
 ```
 
-La suite (oltre 200 test con Vitest) copre:
+La suite (oltre 300 test con Vitest) copre:
 - **busta paga 2026** su casi calcolati a mano (RAL da 9.000 a 130.000 €, cuneo fiscale, trattamento
   integrativo, soglia INPS dell'1% e massimale, tetto di deducibilità con il contributo del datore, premio di
   produttività con tetto, requisito di reddito e regole dopo il 2027);
@@ -266,8 +273,10 @@ La suite (oltre 200 test con Vitest) copre:
 `out/` con un piccolo server locale e controlla caricamento senza errori in console, età FI visibile, Monte Carlo
 nel Web Worker, esportazione JSON, numeri mostrati uguali a quelli del motore (età FI, numero FIRE, patrimonio al
 ritiro, busta paga = `computePayroll`, valori reali = nominali / indice dei prezzi), modifica delle spese che
-cambia l'età FI e resta dopo il ricaricamento, service worker attivo e funzionamento offline, interfaccia inglese
-senza parole italiane, nessuno scorrimento orizzontale a 375 e 1440 px. Richiede il pacchetto `playwright` con
+cambia l'età FI e resta dopo il ricaricamento, service worker attivo e funzionamento offline (anche all'avvio a
+freddo, in un browser nuovo, dopo una sola visita online), interfaccia inglese senza parole italiane, nessuno
+scorrimento orizzontale a 375 e 1440 px, nessun errore in console per tutta la prova. Prima di servire `out/`
+esegue `scripts/sw-precache.mjs`, quindi funziona anche dopo `npx next build`. Richiede il pacchetto `playwright` con
 Chromium e Node ≥ 22.18 (legge il motore TypeScript direttamente dai sorgenti). Con `E2E_SHOTS=<cartella>`
 salva anche gli screenshot.
 
@@ -278,8 +287,12 @@ salva anche gli screenshot.
   build: anche lui non viene scaricato da servizi esterni.
 - I piani sono salvati solo nel `localStorage` del browser (chiave `fire-planner:v2`). Se i dati salvati sono
   illeggibili, o prima di ripristinare gli esempi, l'app ne fa una copia di sicurezza nella chiave
-  `fire-planner:backup:<data>`. I dati della v1 (chiave `fire_wealth_simulator_v1`) vengono letti per convertirli
-  ma non vengono mai modificati.
+  `fire-planner:backup:<data>` (al massimo 5 copie: la più vecchia viene sostituita). Se la copia non si può
+  scrivere, il ripristino degli esempi si ferma e ti propone di esportare i piani. Da **Menu → Copie di
+  sicurezza** puoi ripristinare una copia (i suoi piani si aggiungono come piani nuovi), scaricarla o eliminarla.
+  I dati della v1 (chiave `fire_wealth_simulator_v1`) vengono letti per convertirli ma non vengono mai modificati.
+- Un valore salvato o importato del tipo sbagliato (per esempio un numero al posto di un testo) viene sostituito
+  con il valore predefinito e l'app te lo dice: i dati originali restano in una copia di sicurezza.
 - Se cancelli i dati del sito, usi la navigazione privata o cambi browser o dispositivo, i piani non ci sono.
   Usa **Menu → Esporta JSON** per salvarne una copia e **Importa JSON** per caricarla altrove. L'importazione
   aggiunge sempre piani nuovi e non sostituisce quelli esistenti.

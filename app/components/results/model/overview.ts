@@ -164,8 +164,9 @@ export function shortfallRanges(result: PlanResult): { from: number; to: number 
 }
 
 /**
- * The share of the pension fund converted to a lifetime annuity at access (ordinary benefit): from that age it is
- * yearly income, not wealth, so the wealth chart drops there. Null when no annuity is bought.
+ * The share of the pension fund converted to a lifetime annuity at access (ordinary benefit): from that age locked
+ * wealth holds the present value of the remaining payments (row.pensionAnnuityValue), which runs down as they are
+ * paid. Null when no annuity is bought.
  */
 export function annuityAtAccess(plan: Plan, result: PlanResult): { age: number; pct: number } | null {
   if (!pensionFundMatters(plan) || plan.pensionFund.accessMode !== 'retirement') return null;
@@ -173,6 +174,33 @@ export function annuityAtAccess(plan: Plan, result: PlanResult): { age: number; 
   if (!(pct > 0)) return null;
   const age = result.summary.pensionFundAccessAge;
   return age >= plan.profile.currentAge && age <= plan.profile.lifeExpectancy ? { age, pct } : null;
+}
+
+export interface CashGap {
+  /** First age with spending not covered while still working. */
+  age: number;
+  /** Missing amount that year, today's €. */
+  amountToday: number;
+  /** Label of the largest expense event of that year, when the engine names one. */
+  event: string | null;
+}
+
+/**
+ * The plan runs out of accessible money while still working (the engine's `shortfallWhileWorking`, or a first
+ * shortfall before the displayed retirement age): every later retirement age fails in that same year, so this gap, not
+ * the FI target, is what makes the plan fail. Null otherwise.
+ */
+export function cashGapWhileWorking(result: PlanResult): CashGap | null {
+  const { summary, issues, rows } = result;
+  const issue = issues.find((i) => i.code === 'shortfallWhileWorking');
+  const params = issue?.params ?? {};
+  const age = typeof params.age === 'number' ? params.age : summary.depletionAge;
+  if (age === null || !(age < summary.retirementAge)) return null;
+  const row = rowAtAge(rows, age);
+  const amountToday =
+    typeof params.amount === 'number' ? params.amount : row && row.priceIndex > 0 ? row.shortfall / row.priceIndex : 0;
+  const event = typeof params.event === 'string' && params.event.trim() !== '' ? params.event : null;
+  return { age, amountToday, event };
 }
 
 /** Share of the net worth that is locked when work stops (end of the last working year), %; null if not defined. */
@@ -231,8 +259,17 @@ export function buildInsights(plan: Plan, result: PlanResult, mc: MonteCarloResu
   const { summary, issues } = result;
   const out: Insight[] = [];
   const R = summary.retirementAge;
+  const gap = cashGapWhileWorking(result);
 
-  if (summary.depletionAge !== null) {
+  if (gap) {
+    // Not a depletion in retirement: the money runs out while still working.
+    out.push({
+      id: 'cashGap',
+      tone: 'warning',
+      key: 'results.insight.cashGap',
+      params: { age: format.num(gap.age), amount: format.eur(gap.amountToday) },
+    });
+  } else if (summary.depletionAge !== null) {
     out.push({ id: 'depletion', tone: 'warning', key: 'results.insight.depletion', params: { age: format.num(summary.depletionAge) } });
   } else {
     out.push({
@@ -297,8 +334,9 @@ export function buildInsights(plan: Plan, result: PlanResult, mc: MonteCarloResu
         key: 'results.insight.mcFailures',
         params: { pct: format.pct(failPct, 0), age: format.num(median), retirementAge: format.num(mc.retirementAge) },
       };
-      // Below the user's own target, the risk is the first thing to read.
-      if (belowTarget) out.unshift(failures);
+      // Below the user's own target, the risk is the first thing to read (after a cash gap while working, which is
+      // its cause when there is one).
+      if (belowTarget) out.splice(gap ? 1 : 0, 0, failures);
       else out.push(failures);
     }
   }

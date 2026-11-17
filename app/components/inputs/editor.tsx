@@ -31,7 +31,7 @@ const EditorContext = createContext<PlanEditor | null>(null);
 
 export function PlanEditorProvider({ plan, issues, children }: { plan: Plan; issues: readonly Issue[]; children: ReactNode }) {
   const { updatePlan } = usePlanActions();
-  const issueText = useIssueText(plan);
+  const issueText = useIssueText();
   const value = useMemo<PlanEditor>(() => {
     const byPath = groupIssuesByPath(issues);
     const issuesFor = (path: string) => byPath.get(normalizePath(path)) ?? [];
