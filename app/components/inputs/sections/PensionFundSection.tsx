@@ -1,7 +1,8 @@
 'use client';
 
-import { yieldTaxRatePct, type VoluntaryPensionMode } from '@/lib/engine';
+import { yieldTaxRatePct, type PensionFundAccessMode, type VoluntaryPensionMode } from '@/lib/engine';
 import { useFormat, useT, useTranslatedOptions } from '@/lib/i18n';
+import { Button } from '../../ui';
 import { numOr, usePlanEditor } from '../editor';
 import { FieldGrid, Note, PlanNumber, PlanSelect, PlanSwitch, PlanText, SubHeading } from '../fields';
 
@@ -11,7 +12,16 @@ const VOLUNTARY_OPTIONS = [
   { value: 'fixed', labelKey: 'inputs.pf.voluntary.fixed' },
 ] as const satisfies readonly { value: VoluntaryPensionMode; labelKey: string }[];
 
-/** Fondo pensione e TFR: fund line, access (RITA / ordinary benefit), lump sum vs annuity, voluntary contributions. */
+const ACCESS_MODE_OPTIONS = [
+  { value: 'retirement', labelKey: 'inputs.pf.accessMode.retirement' },
+  { value: 'rita', labelKey: 'inputs.pf.accessMode.rita' },
+  { value: 'redemption', labelKey: 'inputs.pf.accessMode.redemption' },
+] as const satisfies readonly { value: PensionFundAccessMode; labelKey: string }[];
+
+/**
+ * Fondo pensione e TFR: fund line, access (ordinary benefit / RITA / riscatto per inoccupazione), lump sum vs annuity,
+ * voluntary contributions.
+ */
 export function PensionFundSection() {
   const t = useT();
   const format = useFormat();
@@ -28,6 +38,43 @@ export function PensionFundSection() {
   const yieldTax = pfr && Number.isFinite(govShare) ? yieldTaxRatePct(govShare, rules) : NaN;
   const cap = format.eur(numOr(pfr?.deductionCap));
   const voluntary = plan.savingsPolicy.voluntaryPension;
+  const accessModeOptions = useTranslatedOptions(ACCESS_MODE_OPTIONS);
+  const accessMode = pf.accessMode;
+  const ordinaryBenefit = accessMode === 'retirement';
+  // Legal windows derived from the plan's rules (no legal number is hard-coded here).
+  const ritaYearsUnemployed = Number.isFinite(numOr(pfr?.ritaMaxYearsEarlyUnemployed))
+    ? numOr(pfr?.ritaMaxYearsEarlyUnemployed)
+    : 2 * ritaYears;
+  const ritaFrom = oldAge - ritaYears;
+  const ritaFromUnemployed = oldAge - ritaYearsUnemployed;
+  const redemptionAfter = numOr(pfr?.redemptionAfterUnemployedYears);
+  const redemptionBlocked = numOr(pfr?.redemptionBlockedYearsBeforeOldAge);
+  const age = (x: number) => format.num(x);
+  const accessModeDescription =
+    accessMode === 'retirement'
+      ? t('inputs.pf.accessMode.retirementDesc', { oldAge: age(oldAge), max: n(pfr?.maxCapitalSharePct) })
+      : accessMode === 'rita'
+        ? t('inputs.pf.accessMode.ritaDesc', {
+            oldAge: age(oldAge),
+            years: age(ritaYears),
+            from: age(ritaFrom),
+            yearsUnemployed: age(ritaYearsUnemployed),
+            fromUnemployed: age(ritaFromUnemployed),
+          })
+        : accessMode === 'redemption'
+          ? t('inputs.pf.accessMode.redemptionDesc', {
+              after: age(redemptionAfter),
+              blocked: age(redemptionBlocked),
+              oldAge: age(oldAge),
+              fallback: age(oldAge - redemptionBlocked),
+            })
+          : undefined;
+  const accessAgeDescription =
+    accessMode === 'redemption'
+      ? t('inputs.pf.accessAgeRedemption', { after: age(redemptionAfter) })
+      : accessMode === 'rita'
+        ? t('inputs.pf.accessAgeRita', { from: age(ritaFrom), fromUnemployed: age(ritaFromUnemployed), oldAge: age(oldAge) })
+        : t('inputs.pf.accessAgeRetirement', { oldAge: age(oldAge) });
 
   return (
     <div>
@@ -137,45 +184,79 @@ export function PensionFundSection() {
         />
       </FieldGrid>
 
-      <SubHeading>{t('inputs.pf.accessTitle')}</SubHeading>
+      <SubHeading help={t('inputs.pf.accessHelp')} label={t('inputs.pf.accessTitle')}>
+        {t('inputs.pf.accessTitle')}
+      </SubHeading>
       <FieldGrid>
-        <PlanNumber
-          path="pensionFund.accessAge"
+        <PlanSelect<PensionFundAccessMode>
+          path="pensionFund.accessMode"
           className="sm:col-span-2"
-          label={t('inputs.pf.accessAge')}
-          help={t('inputs.pf.accessAgeHelp', {
-            oldAge: format.num(oldAge),
-            years: format.num(ritaYears),
-            min: format.num(numOr(pfr?.minMembershipYears)),
-          })}
-          description={
-            Number.isFinite(oldAge) && Number.isFinite(ritaYears)
-              ? t('inputs.pf.accessAgeDesc', { rita: format.num(oldAge - ritaYears), oldAge: format.num(oldAge) })
-              : undefined
-          }
-          unit={t('common.unit.age')}
-          value={numOr(pf.accessAge)}
-          integer
-          min={0}
-          step={1}
+          label={t('inputs.pf.accessMode')}
+          help={t('inputs.pf.accessModeHelp')}
+          value={(accessMode ?? '') as PensionFundAccessMode}
+          options={accessModeOptions}
           disabled={!enabled}
+          description={accessModeDescription}
           onChange={(v) =>
             update((d) => {
-              d.pensionFund.accessAge = v;
+              d.pensionFund.accessMode = v;
             })
           }
         />
+        <div className="sm:col-span-2">
+          <PlanNumber
+            path="pensionFund.accessAge"
+            label={t('inputs.pf.accessAge')}
+            help={t('inputs.pf.accessAgeHelp', {
+              oldAge: format.num(oldAge),
+              years: format.num(ritaYears),
+              yearsUnemployed: format.num(ritaYearsUnemployed),
+              min: format.num(numOr(pfr?.minMembershipYears)),
+            })}
+            description={accessAgeDescription}
+            unit={t('common.unit.age')}
+            value={numOr(pf.accessAge)}
+            integer
+            min={0}
+            step={1}
+            disabled={!enabled || accessMode === 'redemption'}
+            onChange={(v) =>
+              update((d) => {
+                d.pensionFund.accessAge = v;
+              })
+            }
+          />
+          {/* Switching to RITA leaves the ordinary access age (no silent change): offer the earliest RITA age explicitly. */}
+          {enabled && accessMode === 'rita' && Number.isFinite(ritaFrom) && numOr(pf.accessAge) >= oldAge ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="mt-1 h-7 px-2 text-xs text-cyan-300"
+              onClick={() =>
+                update((d) => {
+                  d.pensionFund.accessAge = ritaFrom;
+                })
+              }
+            >
+              {t('inputs.pf.useRitaAge', { age: format.num(ritaFrom) })}
+            </Button>
+          ) : null}
+        </div>
         <PlanNumber
           path="pensionFund.capitalSharePct"
           label={t('inputs.pf.capitalSharePct')}
           help={t('inputs.pf.capitalSharePctHelp', { max: n(pfr?.maxCapitalSharePct) })}
-          description={t('inputs.pf.capitalSharePctDesc', { max: n(pfr?.maxCapitalSharePct) })}
+          description={
+            ordinaryBenefit
+              ? t('inputs.pf.capitalSharePctDesc', { max: n(pfr?.maxCapitalSharePct) })
+              : t('inputs.pf.onlyRetirementMode')
+          }
           unit={t('common.unit.pct')}
           value={numOr(pf.capitalSharePct)}
           min={0}
           max={100}
           step={5}
-          disabled={!enabled}
+          disabled={!enabled || !ordinaryBenefit}
           onChange={(v) =>
             update((d) => {
               d.pensionFund.capitalSharePct = v;
@@ -186,11 +267,12 @@ export function PensionFundSection() {
           path="pensionFund.annuityRatePct"
           label={t('inputs.pf.annuityRatePct')}
           help={t('inputs.pf.annuityRatePctHelp')}
+          description={ordinaryBenefit ? undefined : t('inputs.pf.onlyRetirementMode')}
           unit={t('common.unit.pct')}
           value={numOr(pf.annuityRatePct)}
           min={0}
           step={0.1}
-          disabled={!enabled}
+          disabled={!enabled || !ordinaryBenefit}
           onChange={(v) =>
             update((d) => {
               d.pensionFund.annuityRatePct = v;
@@ -257,10 +339,24 @@ export function PensionFundSummary() {
   const { plan } = usePlanEditor();
   const pf = plan.pensionFund;
   if (pf.enabled !== true) return <>{t('inputs.pf.summaryOff')}</>;
+  const ret = format.pct(numOr(pf.expectedReturnPct), 1);
+  if (pf.accessMode === 'rita') {
+    return <>{t('inputs.pf.summaryRita', { ret, age: format.num(numOr(pf.accessAge)) })}</>;
+  }
+  if (pf.accessMode === 'redemption') {
+    return (
+      <>
+        {t('inputs.pf.summaryRedemption', {
+          ret,
+          after: format.num(numOr(plan.taxRules.pensionFund?.redemptionAfterUnemployedYears)),
+        })}
+      </>
+    );
+  }
   return (
     <>
       {t('inputs.pf.summaryOn', {
-        ret: format.pct(numOr(pf.expectedReturnPct), 1),
+        ret,
         age: format.num(numOr(pf.accessAge)),
         capital: format.pct(numOr(pf.capitalSharePct), 0),
       })}

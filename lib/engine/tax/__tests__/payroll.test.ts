@@ -241,12 +241,21 @@ describe('computePayroll — productivity bonus', () => {
     expect(p.netIncome).toBeCloseTo(28793.32, 2);
   });
 
-  it('6,000 € in 2026: 5,000 at 1%, 1,000 taxed ordinarily', () => {
+  it('6,000 € in 2026: the 5,000 € cap is measured net of the bonus INPS (circ. AdE 28/E/2016)', () => {
     const p = payroll({ ral: 35000, productivityBonus: 6000, priorYearIncome: 35000 });
     expect(p.inps).toBeCloseTo(3767.9, 2); // 41,000 × 9.19%
-    expect(p.productivityBonusTax).toBeCloseTo(45.405, 3); // (5,000 − 459.50) × 1%
-    expect(p.taxableIncome).toBeCloseTo(32691.6, 2); // (35,000 + 1,000) × (1 − 9.19%)
-    expect(p.irpefGross).toBeCloseTo(7988.228, 3); // 6,440 + 4,691.60 × 33%
+    // gross part within the cap = 5,000 / (1 − 9.19%) = 5,506.0015; net of its INPS (506.0015) = exactly 5,000
+    expect(p.productivityBonusTax).toBeCloseTo(50, 6); // 5,000 × 1%
+    // excess 6,000 − 5,506.0015 = 493.9985 is ordinary: (35,000 + 493.9985) × (1 − 9.19%) = 32,232.10
+    expect(p.taxableIncome).toBeCloseTo(32232.1, 2);
+    expect(p.irpefGross).toBeCloseTo(7836.593, 3); // 6,440 + 4,232.10 × 33%
+  });
+
+  it('a bonus whose net of INPS is within the cap is entirely at the substitute rate', () => {
+    // 5,500 gross − 9.19% INPS = 4,994.55 net ≤ 5,000: no excess (the old gross-cap rule would tax 500 ordinarily)
+    const p = payroll({ ral: 35000, productivityBonus: 5500, priorYearIncome: 35000 });
+    expect(p.productivityBonusTax).toBeCloseTo(49.9455, 4); // 5,500 × (1 − 9.19%) × 1%
+    expect(p.taxableIncome).toBeCloseTo(31783.5, 2); // same as RAL 35,000 alone
   });
 
   it('ineligible when prior-year income > 80,000: the whole bonus is ordinary income', () => {
@@ -261,8 +270,10 @@ describe('computePayroll — productivity bonus', () => {
     expect(payroll({ ral: 35000, productivityBonus: 3000, calendarYear: 2027 }).productivityBonusTax).toBeCloseTo(27.243, 3);
     const p = payroll({ ral: 35000, productivityBonus: 4000, calendarYear: 2028 });
     expect(p.inps).toBeCloseTo(3584.1, 2); // 39,000 × 9.19%
-    expect(p.productivityBonusTax).toBeCloseTo(272.43, 2); // (3,000 − 275.70) × 10%
-    expect(p.taxableIncome).toBeCloseTo(32691.6, 2); // (35,000 + 1,000 excess) × (1 − 9.19%)
+    // within the cap: 3,000 / (1 − 9.19%) = 3,303.6009 gross → 3,000 net taxed at 10%
+    expect(p.productivityBonusTax).toBeCloseTo(300, 6);
+    // excess 4,000 − 3,303.6009 = 696.3991 is ordinary: (35,000 + 696.3991) × (1 − 9.19%) = 32,415.90
+    expect(p.taxableIncome).toBeCloseTo(32415.9, 2);
   });
 });
 

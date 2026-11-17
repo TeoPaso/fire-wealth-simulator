@@ -71,6 +71,8 @@ export function sectionOfPath(path: string): SectionId | null {
   if (p.startsWith('savingsPolicy.')) {
     return p === 'savingsPolicy.emergencyFundMonths' ? 'portfolio' : 'pensionFund';
   }
+  // The savingsPolicy object itself (e.g. missing): its fields live in Investimenti and Fondo pensione.
+  if (p === 'savingsPolicy') return 'portfolio';
   return SECTION_BY_ROOT[rootOf(p)] ?? null;
 }
 
@@ -98,9 +100,9 @@ const FIELD_PATTERNS: readonly RegExp[] = [
   /^assets\.inps\.(contributionYears|montante)$/,
   /^portfolio\.(equityBondCorrelation|rebalancing)$/,
   new RegExp(
-    `^portfolio\\.assets(${ITEM}(\\.(name|kind|allocationPct|expectedReturnPct|volatilityPct|terPct|taxRatePct))?)?$`,
+    `^portfolio\\.assets(${ITEM}(\\.(id|name|kind|allocationPct|expectedReturnPct|volatilityPct|terPct|taxRatePct))?)?$`,
   ),
-  /^pensionFund\.(enabled|name|expectedReturnPct|volatilityPct|costPct|govBondSharePct|equityCorrelation|accessAge|capitalSharePct|annuityRatePct)$/,
+  /^pensionFund\.(enabled|name|expectedReturnPct|volatilityPct|costPct|govBondSharePct|equityCorrelation|accessMode|accessAge|capitalSharePct|annuityRatePct)$/,
   /^statePension\.(mode|monthlyNetToday|claimAge|realGdpGrowthPct|indexationPct)$/,
   /^withdrawal\.(swrPct|strategy|guardrailCutPct)$/,
   /^market\.(inflationPct|inflationVolatilityPct|cashRatePct)$/,
@@ -115,10 +117,13 @@ const FIELD_PATTERNS: readonly RegExp[] = [
   /^taxRules\.inps\.(employeeRatePct|additionalRatePct|additionalThreshold|ceiling|indexThresholdsToInflation|pensionAccrualRatePct)$/,
   /^taxRules\.productivityBonus\.(ratePct|cap|priorYearIncomeLimit|validUntilYear|afterRatePct|afterCap)$/,
   /^taxRules\.tfr\.(divisor|contributionPct|revalFixedPct|revalInflationSharePct|revalTaxPct)$/,
-  /^taxRules\.pensionFund\.(deductionCap|yieldTaxPct|govBondYieldTaxPct|exitTaxMaxPct|exitTaxMinPct|exitTaxReductionPerYearPct|exitTaxReductionAfterYears|earlyRedemptionTaxPct|maxCapitalSharePct|minMembershipYears|ritaMaxYearsEarly)$/,
+  /^taxRules\.pensionFund\.(deductionCap|yieldTaxPct|govBondYieldTaxPct|exitTaxMaxPct|exitTaxMinPct|exitTaxReductionPerYearPct|exitTaxReductionAfterYears|earlyRedemptionTaxPct|maxCapitalSharePct|minMembershipYears|ritaMaxYearsEarly|ritaMaxYearsEarlyUnemployed|redemptionAfterUnemployedYears|redemptionBlockedYearsBeforeOldAge)$/,
   /^taxRules\.investments\.(capitalGainsPct|govBondPct|stampDutyPct|cashStampDuty|cashStampDutyThreshold|cashInterestTaxPct)$/,
   /^taxRules\.statePension\.(oldAgeAge|oldAgeMinYears|fallbackAge|fallbackMinYears|installmentsPerYear)$/,
-  /^taxRules\.statePension\.transformationCoefficients(\[\d+\])?$/,
+  // Any key (a non-numeric age is reported on its own entry, which the editor renders too).
+  /^taxRules\.statePension\.transformationCoefficients(\[[^\]]+\])?$/,
+  // Sources list (shown as links at the bottom of the rules section).
+  new RegExp(`^taxRules\\.sources(${ITEM}(\\.(key|label|url))?)?$`),
 ];
 
 /** True when the panel renders a field (or list container) for this path, so its issues appear there. */

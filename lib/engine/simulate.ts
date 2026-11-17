@@ -67,6 +67,7 @@ export interface PreparedPlan {
   pfCost: number;
   pfYieldTax: number;
   pfAccessAge: number;
+  pfAccessMode: Plan['pensionFund']['accessMode'];
   pfCapitalShare: number;
   pfAnnuityRate: number;
   pfMembershipStartYear: number;
@@ -167,6 +168,7 @@ export function preparePlan(plan: Plan): PreparedPlan {
     pfCost: plan.pensionFund.costPct / 100,
     pfYieldTax: yieldTaxRatePct(plan.pensionFund.govBondSharePct, rules) / 100,
     pfAccessAge: plan.pensionFund.accessAge,
+    pfAccessMode: plan.pensionFund.accessMode,
     pfCapitalShare: plan.pensionFund.capitalSharePct / 100,
     pfAnnuityRate: plan.pensionFund.annuityRatePct / 100,
     pfMembershipStartYear: plan.assets.pensionFund.membershipStartYear,
@@ -247,6 +249,53 @@ export function statePensionClaimAge(prep: PreparedPlan, retirementAge: number):
 /** Retirement age used when 'auto' finds no FI age: the (nominal) state-pension age. */
 export function fallbackRetirementAge(prep: PreparedPlan): number {
   return prep.spMode === 'contributivo' ? Math.max(prep.spClaimAge, prep.oldAgeAge) : prep.spClaimAge;
+}
+
+/** How the pension-fund position is actually paid out for a given retirement age (SPEC §5.3). */
+export interface PensionFundAccess {
+  /**
+   * - 'benefit': ordinary benefit (capital share + annuity on the rest);
+   * - 'rita': equal yearly instalments from startAge until the old-age pension age;
+   * - 'redemption': 100% lump sum (riscatto totale per inoccupazione).
+   */
+  kind: 'benefit' | 'rita' | 'redemption';
+  /** Age of the first payment (the position is locked before it). */
+  startAge: number;
+  /** accessMode 'redemption' was blocked by the window before the old-age pension: RITA from the window instead. */
+  redemptionFallbackRita: boolean;
+  /** accessMode 'rita'/'redemption' became an ordinary benefit because work stops at or after the old-age age. */
+  ordinaryBenefitFallback: boolean;
+  /** accessMode 'rita' with work going on past accessAge: the instalments start at retirement. */
+  ritaDelayed: boolean;
+}
+
+/**
+ * Payout schedule of the pension fund (SPEC §5.3):
+ * - 'retirement': ordinary benefit at max(accessAge, R);
+ * - 'rita': instalments from max(accessAge, R) (RITA needs the job to have ended) until oldAgeAge; an ordinary
+ *   benefit if that start is not before oldAgeAge;
+ * - 'redemption': 100% at R + redemptionAfterUnemployedYears unless that age falls within the
+ *   redemptionBlockedYearsBeforeOldAge window, then RITA from max(window start, R) (or an ordinary benefit at R when
+ *   R >= oldAgeAge).
+ */
+export function pensionFundAccess(prep: PreparedPlan, retirementAge: number): PensionFundAccess {
+  const R = retirementAge;
+  const oldAge = prep.oldAgeAge;
+  const none = { redemptionFallbackRita: false, ordinaryBenefitFallback: false, ritaDelayed: false };
+  if (prep.pfAccessMode === 'rita') {
+    const start = Math.max(prep.pfAccessAge, R);
+    if (start >= oldAge) return { ...none, kind: 'benefit', startAge: start, ordinaryBenefitFallback: true };
+    return { ...none, kind: 'rita', startAge: start, ritaDelayed: R > prep.pfAccessAge };
+  }
+  if (prep.pfAccessMode === 'redemption') {
+    const pfRules = prep.rules.pensionFund;
+    const at = R + pfRules.redemptionAfterUnemployedYears;
+    const windowStart = oldAge - pfRules.redemptionBlockedYearsBeforeOldAge;
+    if (at < windowStart) return { ...none, kind: 'redemption', startAge: at };
+    if (R >= oldAge) return { ...none, kind: 'benefit', startAge: R, ordinaryBenefitFallback: true };
+    return { ...none, kind: 'rita', startAge: Math.max(windowStart, R), redemptionFallbackRita: true };
+  }
+  return { ...none, kind: 'benefit', startAge: Math.max(prep.pfAccessAge, R) };
 }
 
 /* ───────────────────────────── Working-year cache ───────────────────────────── */
@@ -345,6 +394,8 @@ export function workYear(prep: PreparedPlan, cache: WorkCache, t: number): WorkY
   const toFund = prep.pfEnabled ? (quota * ph.tfrToFundPct) / 100 : 0;
   const eligible = productivityBonusEligible(input.priorYearIncome, rules);
   const bonusCap = productivityBonusRegime(rules, year).cap;
+  // The cap is measured on the bonus net of its employee INPS (same pro-rata share as computePayroll).
+  const inpsShare = payroll.gross > 0 ? payroll.inps / payroll.gross : 0;
   const entry: WorkYear = {
     phaseIndex: ph.index,
     ral,
@@ -361,7 +412,7 @@ export function workYear(prep: PreparedPlan, cache: WorkCache, t: number): WorkY
     tfrToCompany: quota - toFund,
     pfTaxableAdd: payroll.deductiblePension + Math.min(employer, prep.cap) + toFund,
     employmentIncome: employmentIncomeOf(payroll),
-    bonusAboveCap: productivityBonus > 0 && eligible && productivityBonus > bonusCap + 0.005,
+    bonusAboveCap: productivityBonus > 0 && eligible && productivityBonus * (1 - inpsShare) > bonusCap + 0.005,
     bonusCap,
     bonusIneligible: productivityBonus > 0 && !eligible,
     contributionAboveCap: payroll.nonDeductiblePension > 0.005 || payroll.employerExcessTaxable > 0.005,
@@ -387,6 +438,7 @@ export interface SimulateOptions {
 
 /** First occurrences used for post-run issues (detail runs only). */
 export interface SimulationSignals {
+  /** First working year whose recurring budget (savings excluding life events) is negative. */
   negativeSavingsWhileWorking: { age: number } | null;
   bonusAboveCap: { age: number; phaseIndex: number; cap: number } | null;
   bonusIneligibleIncome: { age: number; phaseIndex: number } | null;
@@ -405,6 +457,7 @@ export interface SimulationResult {
   statePensionNetAtClaim: number;
   statePensionNetAtClaimToday: number;
   pensionFundAccessAge: number;
+  pensionFundAccess: PensionFundAccess;
   signals: SimulationSignals;
 }
 
@@ -442,8 +495,7 @@ export function simulatePrepared(prep: PreparedPlan, opts: SimulateOptions): Sim
   let pfBasis = prep.pfBasis0;
   let lossCarry = 0;
   let pfStage = PF_ACCUMULATING;
-  const accessAge = Math.max(prep.pfAccessAge, R);
-  const rita = accessAge < prep.oldAgeAge;
+  const access = pensionFundAccess(prep, R);
   let annuityGross = 0;
   let annuityTaxRate = 0;
   const minMembership = rules.pensionFund.minMembershipYears;
@@ -519,15 +571,16 @@ export function simulatePrepared(prep: PreparedPlan, opts: SimulateOptions): Sim
     let pfLumpSumNet = 0;
     let pfExitTax = 0;
     let pensionAnnuityNet = 0;
-    if (pfStage === PF_ACCUMULATING && age >= accessAge) {
+    if (pfStage === PF_ACCUMULATING && age >= access.startAge) {
       const membership = Math.max(0, year - prep.pfMembershipStartYear);
       if (pf > 0 && signals.pfMembershipAtAccess === null) signals.pfMembershipAtAccess = membership;
-      if (rita) {
+      if (access.kind === 'rita') {
         pfStage = PF_RITA;
       } else {
+        // Ordinary benefit (capital share + annuity) or riscatto totale (100% capital), paid at the start of the year.
         const share = pf > 0 ? clamp01(pfBasis / pf) : 0;
         const exitRate = exitTaxRatePct(membership, rules) / 100;
-        const lump = pf * prep.pfCapitalShare;
+        const lump = access.kind === 'redemption' ? pf : pf * prep.pfCapitalShare;
         const lumpTax = lump * share * exitRate;
         pfLumpSumNet += lump - lumpTax;
         pfExitTax += lumpTax;
@@ -536,7 +589,7 @@ export function simulatePrepared(prep: PreparedPlan, opts: SimulateOptions): Sim
         pf = 0;
         pfBasis = 0;
         lossCarry = 0;
-        pfStage = PF_ANNUITY;
+        pfStage = annuityGross > 0 ? PF_ANNUITY : PF_DONE;
       }
     }
     if (pfStage === PF_RITA) {
@@ -631,7 +684,7 @@ export function simulatePrepared(prep: PreparedPlan, opts: SimulateOptions): Sim
     for (let i = 0; i < n; i++) portfolioStart += V[i];
     const cashStart = cash;
     const cashInterestGross = cashStart * prep.cashRate;
-    const cashInterestNet = cashInterestGross * (1 - prep.cashTax);
+    const cashInterestNet = cashInterestGross > 0 ? cashInterestGross * (1 - prep.cashTax) : cashInterestGross;
     const stampDuty = portfolioStart * prep.stampPct + (cashStart > prep.cashStampThreshold ? prep.cashStamp : 0);
 
     /* ── Waterfall (§5.6) ── */
@@ -746,7 +799,9 @@ export function simulatePrepared(prep: PreparedPlan, opts: SimulateOptions): Sim
     if (!rows) continue;
 
     if (w) {
-      if (netSavings < -0.005 && !signals.negativeSavingsWhileWorking) signals.negativeSavingsWhileWorking = { age };
+      // Recurring budget only: a one-off event (car, house) or an inheritance does not trigger the warning.
+      const recurringSavings = netSavings + eventsExpense - eventsInflow;
+      if (recurringSavings < -0.005 && !signals.negativeSavingsWhileWorking) signals.negativeSavingsWhileWorking = { age };
       if (w.bonusAboveCap && !signals.bonusAboveCap) signals.bonusAboveCap = { age, phaseIndex: w.phaseIndex, cap: w.bonusCap };
       if (w.bonusIneligible && !signals.bonusIneligibleIncome) signals.bonusIneligibleIncome = { age, phaseIndex: w.phaseIndex };
       if (w.contributionAboveCap && !signals.contributionAboveCap) signals.contributionAboveCap = { age, phaseIndex: w.phaseIndex };
@@ -770,6 +825,7 @@ export function simulatePrepared(prep: PreparedPlan, opts: SimulateOptions): Sim
       statePensionTax,
       pensionAnnuityNet,
       cashInterestNet,
+      cashInterestTax: cashInterestGross - cashInterestNet,
       eventsInflow,
       livingExpenses,
       eventsExpense,
@@ -828,7 +884,8 @@ export function simulatePrepared(prep: PreparedPlan, opts: SimulateOptions): Sim
     statePensionClaimAge: claimAge,
     statePensionNetAtClaim: spNetAtClaim,
     statePensionNetAtClaimToday: spNetAtClaimToday,
-    pensionFundAccessAge: accessAge,
+    pensionFundAccessAge: access.startAge,
+    pensionFundAccess: access,
     signals,
   };
 }

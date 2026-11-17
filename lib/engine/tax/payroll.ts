@@ -77,12 +77,15 @@ export function computePayroll(input: PayrollInput, rules: TaxRules, options: Pa
   const gross = ral + ordinaryBonus + productivityBonus;
   const inps = employeeInps(gross, rules, priceIndex);
 
-  // 3. Productivity bonus: the part within the cap (if eligible) pays the substitute tax on (bonus − its INPS);
-  //    the excess (or the whole bonus if ineligible) joins ordinary income.
+  // 3. Productivity bonus: the cap is measured on the bonus NET of its employee INPS (circ. AdE 28/E/2016), so the
+  //    gross part within the cap (if eligible) is min(bonus, cap / (1 − INPS share)); it pays the substitute tax on
+  //    (that part − its INPS) ≤ cap. The excess (or the whole bonus if ineligible) joins ordinary income.
   const regime = productivityBonusRegime(rules, calendarYear);
-  const bonusWithinCap = productivityBonusEligible(input.priorYearIncome, rules) ? Math.min(productivityBonus, regime.cap) : 0;
+  const inpsShare = gross > 0 ? inps / gross : 0;
+  const capGross = inpsShare < 1 ? regime.cap / (1 - inpsShare) : Infinity;
+  const bonusWithinCap = productivityBonusEligible(input.priorYearIncome, rules) ? Math.min(productivityBonus, capGross) : 0;
   const bonusExcess = productivityBonus - bonusWithinCap;
-  const inpsOnBonusWithinCap = gross > 0 ? (inps * bonusWithinCap) / gross : 0;
+  const inpsOnBonusWithinCap = bonusWithinCap * inpsShare;
   const productivityBonusTax = (Math.max(0, bonusWithinCap - inpsOnBonusWithinCap) * regime.ratePct) / 100;
 
   // 2. Pension contributions: one cap for employee + employer; employer excess is taxable income.

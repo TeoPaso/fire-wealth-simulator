@@ -23,7 +23,8 @@ export type RuleNumberKind =
   | 'number';
 
 export type RuleItem =
-  | { kind: RuleNumberKind; path: string }
+  /** `decimals` overrides the default precision of the kind (e.g. 34,20 € of stamp duty). */
+  | { kind: RuleNumberKind; path: string; decimals?: number }
   | { kind: 'nullableYear'; path: string }
   | { kind: 'bool'; path: string }
   | { kind: 'text'; path: string }
@@ -32,7 +33,7 @@ export type RuleItem =
   /** Record<age, % of montante>. */
   | { kind: 'coefficients'; path: string }
   /** Optional object (absent = not modelled), with its own fields. */
-  | { kind: 'optional'; path: string; fields: { kind: RuleNumberKind; path: string }[] };
+  | { kind: 'optional'; path: string; fields: { kind: RuleNumberKind; path: string; decimals?: number }[] };
 
 export type RuleGroupId =
   | 'general'
@@ -162,6 +163,9 @@ export const RULE_GROUPS: readonly RuleGroup[] = [
       pct('pensionFund.maxCapitalSharePct'),
       { kind: 'years', path: 'pensionFund.minMembershipYears' },
       { kind: 'years', path: 'pensionFund.ritaMaxYearsEarly' },
+      { kind: 'years', path: 'pensionFund.ritaMaxYearsEarlyUnemployed' },
+      { kind: 'years', path: 'pensionFund.redemptionAfterUnemployedYears' },
+      { kind: 'years', path: 'pensionFund.redemptionBlockedYearsBeforeOldAge' },
     ],
   },
   {
@@ -170,7 +174,7 @@ export const RULE_GROUPS: readonly RuleGroup[] = [
       pct('investments.capitalGainsPct'),
       pct('investments.govBondPct'),
       pct('investments.stampDutyPct'),
-      eur('investments.cashStampDuty'),
+      { kind: 'eur', path: 'investments.cashStampDuty', decimals: 2 },
       eur('investments.cashStampDutyThreshold'),
       pct('investments.cashInterestTaxPct'),
     ],

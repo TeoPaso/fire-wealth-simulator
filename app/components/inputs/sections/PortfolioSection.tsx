@@ -238,6 +238,7 @@ function AssetEditor({ index }: { index: number }) {
       }
     >
       <PathIssues path={base} className="mb-3" />
+      <PathIssues path={`${base}.id`} className="mb-3" />
       <FieldGrid>
         <PlanText
           path={`${base}.name`}

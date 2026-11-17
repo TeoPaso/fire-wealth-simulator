@@ -444,6 +444,8 @@ export interface YearRow {
   statePensionTax?: number;
   pensionAnnuityNet: number;
   cashInterestNet: number;
+  /** OPTIONAL (added by simulation engine, always set): tax withheld on the cash interest, €. */
+  cashInterestTax?: number;
   eventsInflow: number; // negative-amount life events (inheritance, …)
 
   // Outflows
