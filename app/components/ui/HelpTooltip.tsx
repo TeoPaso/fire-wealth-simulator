@@ -15,23 +15,24 @@ export interface HelpTooltipProps {
 }
 
 /**
- * Small "?" button showing help text. Opens on hover, focus or click (click pins it open, useful on touch);
- * Escape, outside click, scroll or resize close it. The text is also the button's accessible description, so
- * screen-reader users hear it on focus. The bubble is portalled to <body> (glass cards create containing blocks).
+ * Small "?" button showing help text. Opens on hover or click / Enter / Space (which pins it open, useful on
+ * touch); Escape, blur, outside click, scroll or resize close it. It does NOT open on keyboard focus: tabbing
+ * through a form would otherwise cover the next fields with bubbles (UX-09). The text is the button's accessible
+ * description (a `hidden` element: referenced descriptions are read even when hidden, and it does not leak into
+ * the name of a surrounding heading or label, UX-18), so screen-reader users hear it on focus. The bubble is
+ * portalled to <body> (glass cards create containing blocks).
  */
 export function HelpTooltip({ content, label, className }: HelpTooltipProps) {
   const t = useT();
   const descId = useId();
   const [hovered, setHovered] = useState(false);
-  const [focused, setFocused] = useState(false);
   const [pinned, setPinned] = useState(false);
-  const open = hovered || focused || pinned;
+  const open = hovered || pinned;
   const buttonRef = useRef<HTMLButtonElement>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
 
   const close = useCallback(() => {
     setHovered(false);
-    setFocused(false);
     setPinned(false);
   }, []);
 
@@ -82,11 +83,7 @@ export function HelpTooltip({ content, label, className }: HelpTooltipProps) {
         onClick={() => (pinned ? close() : setPinned(true))}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => {
-          setFocused(false);
-          setPinned(false);
-        }}
+        onBlur={() => setPinned(false)}
         className={cn(
           'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:text-cyan-300',
           open && 'text-cyan-300',
@@ -95,7 +92,7 @@ export function HelpTooltip({ content, label, className }: HelpTooltipProps) {
       >
         <CircleHelp aria-hidden="true" className="h-4 w-4" />
       </button>
-      <span id={descId} className="sr-only">
+      <span id={descId} hidden>
         {content}
       </span>
       {open

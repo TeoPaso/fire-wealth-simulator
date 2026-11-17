@@ -3,14 +3,18 @@
  * state, transient notices and every action of docs/SPEC.md §6. Writes are debounced and flushed on pagehide.
  */
 import { createExamplePlans, migrateV1State, type Plan } from '@/lib/engine';
+import { V1_ASSUMED_AGE } from '@/lib/engine/migrate-v1';
 import { hasMessage, translate, type Lang } from '@/lib/i18n/core';
 import {
+  BACKUP_KEY_PREFIX,
   STORAGE_KEY,
+  listBackups,
   loadState,
   normalizePlans,
   saveState,
   serializeState,
   writeBackup,
+  type BackupInfo,
   type LoadResult,
   type StorageLike,
 } from './persistence';
@@ -19,6 +23,9 @@ import { STATE_VERSION, type Notice, type NoticeInit, type PlannerState, type Va
 
 export const EXPORT_FORMAT = 'fire-planner-italia';
 export const DEFAULT_SAVE_DELAY_MS = 250;
+/** Import limits: files larger than this are refused before parsing (AppMenu), and so are files with more plans. */
+export const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
+export const MAX_IMPORT_PLANS = 100;
 
 export interface ImportMessage {
   level: 'error' | 'warning' | 'info';
@@ -51,8 +58,17 @@ export interface PlannerActions {
   importJson(text: string): ImportPreview;
   /** Adds previewed plans as NEW plans with fresh ids; the first one becomes active. Returns the new ids. */
   applyImport(plans: Plan[]): string[];
-  /** Replaces all plans with the examples, after backing up the current state in storage. */
-  resetToExamples(): void;
+  /**
+   * Replaces all plans with the examples, after backing up the current state in storage. When the backup cannot be
+   * written (full quota, storage unavailable) nothing changes and false is returned, unless `force` is set (the UI
+   * then offers to export the plans first).
+   */
+  resetToExamples(opts?: { force?: boolean }): boolean;
+  /** Backups written by the store (recovery, reset), newest first. */
+  listBackups(): BackupInfo[];
+  /** Raw text of a backup (a serialized state), or null. */
+  readBackup(key: string): string | null;
+  deleteBackup(key: string): void;
   setLang(lang: Lang): void;
   setValueMode(mode: ValueMode): void;
   pushNotice(notice: NoticeInit): string;
@@ -89,12 +105,66 @@ export const EXAMPLE_NAME_KEYS: Record<string, string> = {
   'example-optimistic': 'common.example.optimistic',
 };
 
-/** Example plans named in the given UI language (the engine names them in Italian). */
+/** Example texts the engine writes in Italian, with the i18n key of their translation. */
+const EXAMPLE_TEXT_KEYS: { get: (p: Plan) => unknown; set: (p: Plan, v: string) => void; key: string }[] = [
+  ...['equity-global', 'bond-aggregate'].map((assetId) => ({
+    get: (p: Plan) => p.portfolio?.assets?.find((a) => a.id === assetId)?.name,
+    set: (p: Plan, v: string) => {
+      const asset = p.portfolio.assets.find((a) => a.id === assetId);
+      if (asset) asset.name = v;
+    },
+    key: `common.example.asset.${assetId}`,
+  })),
+  {
+    get: (p: Plan) => p.pensionFund?.name,
+    set: (p: Plan, v: string) => {
+      p.pensionFund.name = v;
+    },
+    key: 'common.example.pensionFund',
+  },
+];
+
+/**
+ * Translates the example texts that are still exactly as the examples wrote them (in any language) into `lang`:
+ * user-written text is never touched. Returns the same object when nothing changes.
+ */
+export function localizeExampleTexts(plan: Plan, lang: Lang): Plan {
+  const nameKey = EXAMPLE_NAME_KEYS[plan.id];
+  const items = [
+    ...(nameKey ? [{ get: (p: Plan) => p.name, set: (p: Plan, v: string) => void (p.name = v), key: nameKey }] : []),
+    ...EXAMPLE_TEXT_KEYS,
+  ];
+  let copy: Plan | null = null;
+  for (const item of items) {
+    if (!hasMessage(lang, item.key)) continue;
+    const value = item.get(plan);
+    const target = translate(lang, item.key);
+    const isDefault = (['it', 'en'] as const).some((l) => hasMessage(l, item.key) && translate(l, item.key) === value);
+    if (typeof value === 'string' && value !== target && isDefault) {
+      copy ??= structuredClone(plan);
+      item.set(copy, target);
+    }
+  }
+  return copy ?? plan;
+}
+
+/** Example plans written in the given UI language (the engine writes them in Italian). */
 export function localizedExamples(lang: Lang, nowIso: string): Plan[] {
-  return createExamplePlans({ now: nowIso }).map((plan) => {
-    const key = EXAMPLE_NAME_KEYS[plan.id];
-    return key && hasMessage(lang, key) ? { ...plan, name: translate(lang, key) } : plan;
-  });
+  return createExamplePlans({ now: nowIso }).map((plan) => localizeExampleTexts(plan, lang));
+}
+
+/** `name`, or `name (2)`, `name (3)`… when it is already taken. */
+export function uniqueName(name: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(name)) return name;
+  for (let n = 2; ; n++) {
+    const candidate = `${name} (${n})`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
+/** Same id, same timestamp and same content: the object from the other tab can be replaced by ours. */
+function samePlan(a: Plan, b: Plan): boolean {
+  return a.id === b.id && a.updatedAt === b.updatedAt && JSON.stringify(a) === JSON.stringify(b);
 }
 
 export function createPlannerStore(opts: PlannerStoreOptions = {}): PlannerStore {
@@ -111,6 +181,10 @@ export function createPlannerStore(opts: PlannerStoreOptions = {}): PlannerStore
   let noticeSeq = 0;
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   const listeners = new Set<() => void>();
+  // Plans changed (or deleted) in this tab since the last successful write: a reload triggered by another tab
+  // re-applies them instead of dropping them (multi-tab lost update).
+  const dirtyPlans = new Set<string>();
+  const removedPlans = new Set<string>();
 
   const emit = () => {
     for (const listener of [...listeners]) listener();
@@ -128,6 +202,8 @@ export function createPlannerStore(opts: PlannerStoreOptions = {}): PlannerStore
     if (!writable || !storage) return;
     const result = saveState(storage, state);
     if (result.ok) {
+      dirtyPlans.clear();
+      removedPlans.clear();
       if (notices.some((n) => n.id === SAVE_FAILED_ID)) {
         notices = notices.filter((n) => n.id !== SAVE_FAILED_ID);
         emit();
@@ -166,6 +242,10 @@ export function createPlannerStore(opts: PlannerStoreOptions = {}): PlannerStore
     return new Set(state.plans.map((p) => p.id));
   }
 
+  function planNames(): Set<string> {
+    return new Set(state.plans.map((p) => p.name));
+  }
+
   function insertAfter(plans: Plan[], index: number, plan: Plan): Plan[] {
     const copy = plans.slice();
     copy.splice(index + 1, 0, plan);
@@ -177,7 +257,8 @@ export function createPlannerStore(opts: PlannerStoreOptions = {}): PlannerStore
       const examples = localizedExamples(state.ui.lang, nowIso());
       const source = examples.find((p) => p.id === exampleId) ?? examples[0];
       const plan = withFreshIds(source, planIds(), newId);
-      if (name !== undefined) plan.name = name;
+      plan.name = uniqueName(name ?? plan.name, planNames());
+      dirtyPlans.add(plan.id);
       setState({ ...state, plans: [...state.plans, plan], activePlanId: plan.id });
       return plan.id;
     },
@@ -189,7 +270,8 @@ export function createPlannerStore(opts: PlannerStoreOptions = {}): PlannerStore
       const stamp = nowIso();
       plan.createdAt = stamp;
       plan.updatedAt = stamp;
-      if (name !== undefined) plan.name = name;
+      plan.name = uniqueName(name ?? plan.name, planNames());
+      dirtyPlans.add(plan.id);
       setState({ ...state, plans: insertAfter(state.plans, index, plan), activePlanId: plan.id });
       return plan.id;
     },
@@ -200,6 +282,8 @@ export function createPlannerStore(opts: PlannerStoreOptions = {}): PlannerStore
       const plans = state.plans.filter((p) => p.id !== id);
       const activePlanId =
         state.activePlanId === id ? plans[Math.min(index, plans.length - 1)].id : state.activePlanId;
+      dirtyPlans.delete(id);
+      removedPlans.add(id);
       setState({ ...state, plans, activePlanId, compareIds: state.compareIds.filter((c) => c !== id) });
       return true;
     },
@@ -219,6 +303,7 @@ export function createPlannerStore(opts: PlannerStoreOptions = {}): PlannerStore
       draft.updatedAt = nowIso();
       const plans = state.plans.slice();
       plans[index] = draft;
+      dirtyPlans.add(id);
       setState({ ...state, plans });
     },
 
@@ -247,21 +332,47 @@ export function createPlannerStore(opts: PlannerStoreOptions = {}): PlannerStore
     applyImport(plans) {
       if (plans.length === 0) return [];
       const taken = planIds();
+      const names = planNames();
       const added = plans.map((p) => {
         const fresh = withFreshIds(p, taken, newId);
+        fresh.name = uniqueName(typeof fresh.name === 'string' ? fresh.name : String(fresh.name), names);
         taken.add(fresh.id);
+        names.add(fresh.name);
         return fresh;
       });
-      state = { ...state, plans: [...state.plans, ...added], activePlanId: added[0].id };
+      const next: PlannerState = { ...state, plans: [...state.plans, ...added], activePlanId: added[0].id };
+      if (writable && storage) {
+        // Write right away: an import that does not fit in the browser storage would leave every later edit unsaved.
+        if (!saveState(storage, next).ok) {
+          addNotice({ level: 'error', messageKey: 'common.notice.importTooLarge', params: { count: added.length } });
+          emit();
+          return [];
+        }
+        if (saveTimer !== null) {
+          clearTimeout(saveTimer);
+          saveTimer = null;
+        }
+        dirtyPlans.clear();
+        removedPlans.clear();
+        notices = notices.filter((n) => n.id !== SAVE_FAILED_ID);
+      }
+      state = next;
       addNotice({ level: 'success', messageKey: 'common.notice.importDone', params: { count: added.length } });
-      scheduleSave();
+      if (!writable || !storage) for (const p of added) dirtyPlans.add(p.id);
       emit();
       return added.map((p) => p.id);
     },
 
-    resetToExamples() {
+    resetToExamples({ force = false } = {}) {
       const backupKey = writable && storage ? writeBackup(storage, serializeState(state), now()) : null;
+      // Never replace the plans without a copy, unless the user chose to (after being offered an export).
+      if (backupKey === null && !force) return false;
       const plans = localizedExamples(state.ui.lang, nowIso());
+      for (const p of state.plans) removedPlans.add(p.id);
+      for (const p of plans) {
+        removedPlans.delete(p.id);
+        dirtyPlans.add(p.id);
+      }
       state = { ...state, plans, activePlanId: plans[0].id, compareIds: [] };
       addNotice(
         backupKey
@@ -270,11 +381,37 @@ export function createPlannerStore(opts: PlannerStoreOptions = {}): PlannerStore
       );
       scheduleSave();
       emit();
+      return true;
+    },
+
+    listBackups() {
+      return listBackups(storage);
+    },
+
+    readBackup(key) {
+      if (!storage || !key.startsWith(BACKUP_KEY_PREFIX)) return null;
+      try {
+        return storage.getItem(key);
+      } catch {
+        return null;
+      }
+    },
+
+    deleteBackup(key) {
+      if (!storage || !key.startsWith(BACKUP_KEY_PREFIX)) return;
+      try {
+        storage.removeItem(key);
+      } catch {
+        // Nothing to do: the backup stays.
+      }
+      emit();
     },
 
     setLang(lang) {
       if (lang === state.ui.lang) return;
-      setState({ ...state, ui: { ...state.ui, lang } });
+      // Example texts still as written by the app follow the language (user-written text never changes).
+      const plans = state.plans.map((p) => localizeExampleTexts(p, lang));
+      setState({ ...state, plans: plans.some((p, i) => p !== state.plans[i]) ? plans : state.plans, ui: { ...state.ui, lang } });
     },
 
     setValueMode(mode) {
@@ -295,16 +432,50 @@ export function createPlannerStore(opts: PlannerStoreOptions = {}): PlannerStore
     },
   };
 
+  /**
+   * Re-reads the state written by another tab. Plans changed here and not written yet are re-applied on top (the
+   * newer updatedAt wins), plans deleted here stay deleted, and the per-tab view (active plan, compared plans,
+   * language, value mode) is kept. Plans whose content did not change keep their object identity, so memoised
+   * results and the background analysis do not run again.
+   */
   function reload(): void {
     if (saveTimer !== null) {
       clearTimeout(saveTimer);
       saveTimer = null;
     }
     const result = loadState(storage, { now, newId });
-    state = result.state;
+    const local = state;
+    const localById = new Map(local.plans.map((p) => [p.id, p]));
+    let plans = result.state.plans.map((p) => {
+      const mine = localById.get(p.id);
+      return mine && samePlan(mine, p) ? mine : p;
+    });
+    const reapply = dirtyPlans.size > 0 || removedPlans.size > 0;
+    if (reapply) {
+      plans = plans.filter((p) => !removedPlans.has(p.id));
+      for (const id of dirtyPlans) {
+        const mine = localById.get(id);
+        if (!mine) continue;
+        const i = plans.findIndex((p) => p.id === id);
+        if (i < 0) plans.push(mine);
+        else if (mine.updatedAt >= plans[i].updatedAt) plans[i] = mine;
+      }
+      if (plans.length === 0) plans = local.plans;
+    }
+    const ids = new Set(plans.map((p) => p.id));
+    const activePlanId = ids.has(local.activePlanId)
+      ? local.activePlanId
+      : ids.has(result.state.activePlanId)
+        ? result.state.activePlanId
+        : plans[0].id;
+    const unchanged =
+      plans.length === local.plans.length && plans.every((p, i) => p === local.plans[i]) && activePlanId === local.activePlanId;
+    state = unchanged
+      ? local
+      : { ...result.state, plans, activePlanId, compareIds: local.compareIds.filter((id) => ids.has(id)), ui: local.ui };
     writable = result.writable && storage !== null;
     for (const n of result.notices) addNotice(n);
-    if (result.shouldSave) writeNow();
+    if (reapply || result.shouldSave) writeNow();
     emit();
   }
 
@@ -349,8 +520,20 @@ function looksLikePlan(value: Record<string, unknown>): boolean {
   return 'schemaVersion' in value || 'profile' in value || 'career' in value;
 }
 
-/** Parses an import file into a preview. Exported for tests. */
+/** Parses an import file into a preview. Never throws. Exported for tests. */
 export function parseImport(text: string, nowIso: string, newId: IdFactory = randomId): ImportPreview {
+  try {
+    return parseImportUnsafe(text, nowIso, newId);
+  } catch {
+    // e.g. JSON nested deeper than structuredClone (or the JSON parser) allows.
+    return { plans: [], errors: [{ level: 'error', key: 'common.import.error.tooComplex' }] };
+  }
+}
+
+function parseImportUnsafe(text: string, nowIso: string, newId: IdFactory): ImportPreview {
+  if (text.length > MAX_IMPORT_BYTES) {
+    return { plans: [], errors: [{ level: 'error', key: 'common.import.error.tooLarge', params: { max: MAX_IMPORT_BYTES / 1024 / 1024 } }] };
+  }
   let data: unknown;
   try {
     data = JSON.parse(text);
@@ -378,7 +561,7 @@ export function parseImport(text: string, nowIso: string, newId: IdFactory = ran
       }
       if (Array.isArray(migrated) && migrated.length > 0) {
         candidates = migrated;
-        errors.push({ level: 'info', key: 'common.import.legacyConverted' });
+        errors.push({ level: 'info', key: 'common.import.legacyConverted', params: { age: V1_ASSUMED_AGE } });
       }
     } else if (looksLikePlan(data)) {
       candidates = [data];
@@ -386,6 +569,12 @@ export function parseImport(text: string, nowIso: string, newId: IdFactory = ran
   }
 
   if (!candidates) return { plans: [], errors: [...errors, { level: 'error', key: 'common.import.error.noPlans' }] };
+  if (candidates.length > MAX_IMPORT_PLANS) {
+    return {
+      plans: [],
+      errors: [...errors, { level: 'error', key: 'common.import.error.tooManyPlans', params: { count: candidates.length, max: MAX_IMPORT_PLANS } }],
+    };
+  }
 
   candidates.forEach((c, i) => {
     if (!isPlainObject(c)) {
@@ -394,7 +583,8 @@ export function parseImport(text: string, nowIso: string, newId: IdFactory = ran
       errors.push({ level: 'warning', key: 'common.import.error.newerVersion', params: { version: c.schemaVersion } });
     }
   });
-  const { plans } = normalizePlans(candidates, nowIso, newId);
+  const { plans, coerced } = normalizePlans(candidates, nowIso, newId);
+  if (coerced > 0) errors.push({ level: 'warning', key: 'common.import.coercedFields', params: { count: coerced } });
   if (plans.length === 0) errors.push({ level: 'error', key: 'common.import.error.noPlans' });
   return { plans, errors: dedupe(errors) };
 }

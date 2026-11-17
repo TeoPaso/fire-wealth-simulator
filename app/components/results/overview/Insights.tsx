@@ -21,8 +21,8 @@ const LEVEL_TONE: Record<IssueLevel, InsightTone> = { error: 'warning', warning:
 
 export function Insights({ data }: TabProps) {
   const { t, format } = useI18n();
-  const issueText = useIssueText();
   const { plan, result, analysis } = data;
+  const issueText = useIssueText(plan);
   const mc = analysis.available && !analysis.stale ? (analysis.result?.monteCarlo ?? null) : null;
   const insights = useMemo(() => buildInsights(plan, result, mc, format), [plan, result, mc, format]);
   const notes = result.issues.filter((i) => i.level !== 'error');

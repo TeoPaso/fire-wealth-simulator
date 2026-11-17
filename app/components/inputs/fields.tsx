@@ -4,7 +4,7 @@
  * Inputs-panel building blocks on top of the UI kit: fields bound to an issue path, layout helpers and list-item
  * chrome. They add the field id (so issues can focus it) and the validation messages of that exact path.
  */
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react';
 import { useT } from '@/lib/i18n';
 import {
@@ -129,12 +129,11 @@ export function FieldGrid({ children, className }: { children: ReactNode; classN
 export function SubHeading({ children, help, label, actions }: { children: ReactNode; help?: ReactNode; label?: string; actions?: ReactNode }) {
   return (
     <div className="mb-2 mt-5 flex items-center gap-2 first:mt-0">
-      <h3 className="min-w-0 flex-1 text-sm font-semibold uppercase tracking-wide text-slate-300">
-        <span className="inline-flex items-center gap-1 align-middle">
-          {children}
-          {help ? <HelpTooltip content={help} label={label} /> : null}
-        </span>
-      </h3>
+      {/* The help button sits next to the heading, not inside it: the heading's accessible name stays its text. */}
+      <div className="flex min-w-0 flex-1 items-center gap-1">
+        <h3 className="min-w-0 text-sm font-semibold uppercase tracking-wide text-slate-300">{children}</h3>
+        {help ? <HelpTooltip content={help} label={label} /> : null}
+      </div>
       {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}
     </div>
   );
@@ -166,6 +165,7 @@ export function ItemCard({
   return (
     <div
       role="group"
+      data-item-card
       aria-labelledby={headingId}
       className={cn(
         'rounded-xl border bg-slate-950/30 p-3 sm:p-4',
@@ -175,7 +175,7 @@ export function ItemCard({
     >
       <div className="mb-3 flex items-start gap-2">
         <div className="min-w-0 flex-1">
-          <h4 id={headingId} className="truncate text-sm font-semibold text-slate-100">
+          <h4 id={headingId} tabIndex={-1} className="truncate text-sm font-semibold text-slate-100 focus:outline-none focus-visible:underline">
             {title}
           </h4>
           {subtitle ? <p className="mt-0.5 truncate text-xs text-slate-400">{subtitle}</p> : null}
@@ -212,6 +212,7 @@ export function ItemActions({
 }) {
   const t = useT();
   const [confirming, setConfirming] = useState(false);
+  const removeRef = useRef<HTMLButtonElement>(null);
   return (
     <>
       {moveUpLabel !== undefined ? (
@@ -221,6 +222,7 @@ export function ItemActions({
         <IconButton size="sm" icon={<ArrowDown />} label={moveDownLabel} disabled={!onMoveDown} onClick={onMoveDown} />
       ) : null}
       <IconButton
+        ref={removeRef}
         size="sm"
         icon={<Trash2 />}
         label={removeLabel ?? t('inputs.common.removeItem', { name: itemName })}
@@ -236,13 +238,35 @@ export function ItemActions({
         onCancel={() => setConfirming(false)}
         onConfirm={() => {
           setConfirming(false);
+          // The trash button disappears with the item: remember where it was, so focus can land on a neighbour.
+          const card = removeRef.current?.closest<HTMLElement>('[data-item-card]') ?? null;
+          const list = card?.parentElement ?? null;
+          const index = list && card ? itemCards(list).indexOf(card) : -1;
           onRemove?.();
+          if (list) requestAnimationFrame(() => requestAnimationFrame(() => focusAfterRemoval(list, index)));
         }}
       >
         {removeBody}
       </ConfirmDialog>
     </>
   );
+}
+
+function itemCards(list: HTMLElement): HTMLElement[] {
+  return [...list.querySelectorAll<HTMLElement>(':scope > [data-item-card]')];
+}
+
+/**
+ * After an item of a list is removed, focus goes to the heading of the item now in its place (or of the previous
+ * one), else to the list's first enabled button (its "Aggiungi…" button), so keyboard and screen-reader users keep
+ * their place instead of being thrown to <body> (UX-10).
+ */
+export function focusAfterRemoval(list: HTMLElement, index: number): void {
+  if (!list.isConnected) return;
+  const cards = itemCards(list);
+  const card = cards[Math.max(0, index)] ?? cards[cards.length - 1];
+  const target = card?.querySelector<HTMLElement>('h4[tabindex]') ?? list.querySelector<HTMLElement>('button:not([disabled])');
+  target?.focus();
 }
 
 /** Issues of a path that has no input of its own (list containers, whole items). */

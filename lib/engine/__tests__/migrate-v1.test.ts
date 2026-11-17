@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { migrateV1State } from '../migrate-v1';
 import { hasErrors, validatePlan } from '../validate';
 import { runPlan } from '../fire';
+import { computePayroll } from '../tax/payroll';
 import { SCHEMA_VERSION } from '../types';
 
 /** The three v1 presets, verbatim from 51eee8d:lib/store/presets.ts (DEFAULT_PRESETS). */
@@ -109,13 +110,40 @@ describe('migrateV1State — v1 presets', () => {
   it('infers monthly expenses as (first-phase net pay − what v1 saved) / 12', () => {
     const [base] = plans;
     const r0 = runPlan(base).rows[0];
-    // v1 saved 600 × 12 + 500 + 500 + the net bonus + the pension tax rebate. In v2 year 0 those savings come back
-    // as net savings (the cash fill to the emergency fund included).
+    // In v2 year 0 the v1 savings come back as net savings (the cash fill to the emergency fund included).
     expect(base.spending.monthlyToday).toBeGreaterThan(1000);
     expect(base.spending.monthlyToday).toBeLessThan(2000);
     const expected = (r0.payroll?.netIncome ?? 0) + r0.cashInterestNet - base.spending.monthlyToday * 12 - r0.stampDuty;
     expect(r0.netSavings).toBeCloseTo(expected, 6);
     expect(r0.netSavings).toBeGreaterThan(600 * 12 + 1000);
+  });
+
+  it('counts as saved only what the user typed in v1 (savings, 13th/14th, net bonus), not v1’s pension tax rebate', () => {
+    // v1 added the IRPEF rebate of the pension contributions as a separate inflow; the v2 net pay already includes the
+    // deduction withheld at source, so counting the rebate as saved again would understate the expenses.
+    const autoMax = { ...V1_PRESETS[0], id: 'user-1', pensionFund: { ...V1_PRESETS[0].pensionFund, autoMaxDeductibility: true } };
+    const [base, max] = migrateV1State([V1_PRESETS[0], autoMax], { now: NOW });
+    expect(max.savingsPolicy.voluntaryPension).toBe('fillCap');
+    for (const plan of [base, max]) {
+      const r0 = runPlan(plan).rows[0];
+      const payroll = r0.payroll!;
+      expect(payroll.pensionTaxSaving).toBeGreaterThan(250); // large enough to show up in the expenses below
+      const input = {
+        ral: 35000,
+        ordinaryBonus: 0,
+        productivityBonus: 2500,
+        priorYearIncome: 35000,
+        employeePensionContribution: r0.pfEmployee,
+        employerPensionContribution: r0.pfEmployer,
+        calendarYear: 2026,
+        priceIndex: 1,
+      };
+      expect(computePayroll(input, plan.taxRules).netIncome).toBeCloseTo(payroll.netIncome, 6);
+      const bonusNet = payroll.netIncome - computePayroll({ ...input, productivityBonus: 0 }, plan.taxRules).netIncome;
+      const savedInV1 = 600 * 12 + 500 + 500 + bonusNet;
+      // Net pay − 12 × expenses = what v1 saved (the expenses are rounded to the euro: ±6 € a year).
+      expect(Math.abs(payroll.netIncome - plan.spending.monthlyToday * 12 - savedInV1)).toBeLessThanOrEqual(6);
+    }
   });
 
   it('maps buckets to assets and splits the invested capital by allocation, cost basis = value', () => {

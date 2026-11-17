@@ -102,11 +102,19 @@ npm run dev        # http://localhost:3000
 statico (GitHub Pages, Netlify, Cloudflare Pages, un server nginx…). Non serve un server Node: `next start` non
 si usa con questa configurazione (`output: 'export'`).
 
-- **Pubblica il sito alla radice di un dominio o sottodominio** (per esempio `https://fire.example.it/` o
-  `https://utente.github.io/`). Manifest, service worker e risorse usano percorsi assoluti (`/manifest.json`,
-  `/sw.js`, `/_next/…`). Per una sottocartella, come `https://utente.github.io/repository/`, devi impostare
-  `basePath` in `next.config.mjs` e adattare i percorsi in `public/manifest.json` e `public/sw.js`.
-- **Netlify / Cloudflare Pages:** comando di build `npm run build`, cartella da pubblicare `out`.
+- **Pubblica il sito alla radice di un'origine dedicata solo a questa app**: un dominio o sottodominio tuo (per
+  esempio `https://fire.example.it/`). Manifest, service worker e risorse usano percorsi assoluti (`/manifest.json`,
+  `/sw.js`, `/_next/…`).
+- **Evita un'origine condivisa** come la radice `https://utente.github.io/`: tutti i progetti dello stesso utente
+  (`https://utente.github.io/altro-progetto/`) condividono l'origine, quindi anche il `localStorage` con i tuoi piani,
+  e il service worker registrato alla radice controllerebbe le loro pagine. Il service worker risponde solo alla
+  pagina dell'app (`/` e `/index.html`), ma lo spazio dei dati resta comune. Su GitHub Pages usa un dominio
+  personalizzato. Per una sottocartella, come `https://utente.github.io/repository/`, devi impostare `basePath` in
+  `next.config.mjs` e adattare i percorsi in `public/manifest.json` e nella registrazione del service worker
+  (`app/components/pwa/ServiceWorker.tsx`).
+- **Netlify / Cloudflare Pages:** comando di build `npm run build`, cartella da pubblicare `out`. Usa sempre
+  `npm run build` (non `npx next build`): dopo la build `scripts/sw-precache.mjs` scrive in `out/sw.js` l'elenco dei
+  file da tenere offline e la versione della cache.
 - **GitHub Pages:** pubblica il contenuto di `out/` con una GitHub Action (`actions/upload-pages-artifact` e
   `actions/deploy-pages`). Se invece pubblichi da un branch, aggiungi in `out/` un file vuoto `.nojekyll`:
   senza questo file Jekyll ignora la cartella `_next/`.
@@ -114,11 +122,19 @@ si usa con questa configurazione (`output: 'export'`).
 
 ### PWA e uso offline
 
-Nella build di produzione l'app registra un service worker (`public/sw.js`). Dopo la prima visita funziona
-anche senza connessione e si può installare dal menu del browser ("Installa app" o "Aggiungi alla schermata
-Home"). Il service worker richiede HTTPS (oppure `localhost`). Le pagine vengono sempre chieste prima alla
-rete: quando pubblichi una nuova versione, gli utenti la ricevono al primo caricamento online. Se cambi i file
-in cache, aggiorna `CACHE_VERSION` in `public/sw.js`.
+Nella build di produzione l'app registra un service worker (`public/sw.js`). Dopo la prima visita online
+funziona anche senza connessione e si può installare dal menu del browser ("Installa app" o "Aggiungi alla
+schermata Home"). Il service worker richiede HTTPS (oppure `localhost`).
+
+- **Cosa tiene offline.** Dopo `npm run build`, `scripts/sw-precache.mjs` inserisce in `out/sw.js` l'elenco di
+  tutti i file della build (`out/_next/static/**`, manifest, icone) e una versione calcolata dal contenuto della
+  build: alla prima visita il service worker li scarica tutti. In più la pagina gli comunica i file che ha già
+  caricato, così anche una build senza elenco funziona offline dopo una sola visita.
+- **Aggiornamenti.** La pagina viene chiesta prima alla rete: quando pubblichi una nuova versione, gli utenti la
+  ricevono al primo caricamento online. Ogni build ha una cache nuova (il nome contiene la versione) e le cache e i
+  file delle build precedenti vengono cancellati: non c'è nessuna versione da aggiornare a mano.
+- **Rete lenta o sito in errore.** Se la rete non risponde entro 4 secondi, o il sito risponde con un errore 5xx,
+  l'app parte dalla copia in cache: i dati sono comunque nel browser.
 
 ## Come si usa
 

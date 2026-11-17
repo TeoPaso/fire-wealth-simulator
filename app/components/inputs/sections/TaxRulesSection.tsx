@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ExternalLink, RotateCcw } from 'lucide-react';
 import { IT_2026, cloneRules, type SourceRef } from '@/lib/engine';
 import { useI18n, useT } from '@/lib/i18n';
@@ -20,6 +20,7 @@ export function TaxRulesSection() {
   const t = useT();
   const { plan, update } = usePlanEditor();
   const [confirming, setConfirming] = useState(false);
+  const statusRef = useRef<HTMLParagraphElement>(null);
   const modified = !deepEqual(plan.taxRules, IT_2026);
   const year = numOr(plan.taxRules.referenceYear);
 
@@ -27,7 +28,12 @@ export function TaxRulesSection() {
     <div>
       <Note>{t('inputs.rules.intro', { year: Number.isFinite(year) ? String(year) : '—' })}</Note>
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <p className={cn('min-w-0 flex-1 text-sm', modified ? 'text-amber-200' : 'text-emerald-300')}>
+        <p
+          ref={statusRef}
+          tabIndex={-1}
+          aria-live="polite"
+          className={cn('min-w-0 flex-1 text-sm focus:outline-none', modified ? 'text-amber-200' : 'text-emerald-300')}
+        >
           {modified ? t('inputs.rules.statusModified') : t('inputs.rules.statusDefault')}
         </p>
         <Button size="sm" icon={<RotateCcw />} disabled={!modified} onClick={() => setConfirming(true)}>
@@ -44,6 +50,8 @@ export function TaxRulesSection() {
           update((d) => {
             d.taxRules = cloneRules(IT_2026);
           });
+          // The reset button is disabled once the rules are the defaults: keep focus on the status it changed.
+          requestAnimationFrame(() => statusRef.current?.focus());
         }}
       >
         {t('inputs.rules.resetBody')}

@@ -202,7 +202,9 @@ describe('PlannerStore', () => {
     expect(preview.plans).toEqual(original);
     other.applyImport(preview.plans);
     const imported = other.getSnapshot().plans.slice(3);
-    const strip = (p: Plan) => ({ ...p, id: '', career: p.career.map((c) => ({ ...c, id: '' })), portfolio: { ...p.portfolio, assets: p.portfolio.assets.map((a) => ({ ...a, id: '' })) }, assets: { ...p.assets, holdings: p.assets.holdings.map((h) => ({ ...h, assetId: '' })) } });
+    // Names that already exist in the receiving store get a suffix, so the plans can be told apart (UX-20).
+    expect(imported.map((p) => p.name)).toEqual(original.map((p) => `${p.name} (2)`));
+    const strip = (p: Plan) => ({ ...p, id: '', name: '', career: p.career.map((c) => ({ ...c, id: '' })), portfolio: { ...p.portfolio, assets: p.portfolio.assets.map((a) => ({ ...a, id: '' })) }, assets: { ...p.assets, holdings: p.assets.holdings.map((h) => ({ ...h, assetId: '' })) } });
     expect(imported.map(strip)).toEqual(original.map(strip));
   });
 

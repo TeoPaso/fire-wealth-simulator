@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Plan, YearRow } from '../types';
 import { deterministicPath } from '../paths';
-import { preparePlan, simulate, simulatePrepared } from '../simulate';
+import { annuityValueFactor, contributionYearsAt, preparePlan, simulate, simulatePrepared, statePensionClaimAge } from '../simulate';
 import { runPlan } from '../fire';
+import { phaseStartPayroll } from '../payrollPreview';
 import { exitTaxRatePct } from '../tax/pensionFund';
 import { tfrSeparateTaxRatePct } from '../tax/tfr';
 import { balances, basePlan, externalInflows, outflows, rowAt, startBalances, zeroWorldPlan } from './helpers';
@@ -171,6 +172,34 @@ describe('simulate — pension fund and TFR', () => {
     expect(e0.pensionFundTaxableBasis).toBeCloseTo(plan.assets.pensionFund.taxableBasis + 5300 + e0.pfTfr, 6);
   });
 
+  it('fillCap only fills the deductible room: nothing is withheld in a year without salary, at most the income otherwise', () => {
+    const plan = basePlan();
+    plan.savingsPolicy.voluntaryPension = 'fillCap';
+    plan.career.splice(2, 0, { ...plan.career[1], id: 'break', label: 'Pausa', untilAge: 42, ralToday: 0, bonusGrossToday: 0 });
+    plan.career[1].untilAge = 40;
+    const result = runPlan(plan);
+    for (const age of [40, 41]) {
+      const r = rowAt(result.rows, age);
+      expect(r.ral).toBe(0);
+      expect(r.pfEmployee).toBe(0);
+      expect(r.payroll?.netIncome).toBe(0);
+      expect(r.payroll?.nonDeductiblePension).toBe(0);
+    }
+    const before = rowAt(result.rows, 39);
+    expect(before.pfEmployee + before.pfEmployer).toBeCloseTo(5300, 9); // a normal salary still fills the cap
+    expect(result.issues.some((i) => i.code === 'contributionAboveCap')).toBe(false);
+    expect(phaseStartPayroll(plan, 2)?.payroll.netIncome).toBe(0); // the inputs-panel preview of the break
+
+    // A tiny salary: the contribution is limited to the income it can be deducted from, all of it deductible.
+    plan.career[2].ralToday = 3000;
+    const low = rowAt(runPlan(plan).rows, 40);
+    expect(low.pfEmployee).toBeGreaterThan(0);
+    expect(low.pfEmployee + low.pfEmployer).toBeLessThan(5300);
+    expect(low.payroll?.nonDeductiblePension).toBeCloseTo(0, 9);
+    expect(low.payroll?.deductiblePension).toBeCloseTo(low.pfEmployee, 9);
+    expect(low.payroll?.netIncome ?? -1).toBeGreaterThanOrEqual(-1e-9);
+  });
+
   it('ordinary benefit at the access age: lump sum + nominal annuity, exit tax by membership years on the taxable share', () => {
     const plan = basePlan();
     plan.pensionFund.capitalSharePct = 50;
@@ -191,6 +220,35 @@ describe('simulate — pension fund and TFR', () => {
     expect(at.pensionFund).toBe(0);
     expect(rowAt(rows, 80).pensionAnnuityNet).toBeCloseTo(at.pensionAnnuityNet, 9); // constant nominal
     for (const r of rows.filter((x) => x.age < 67)) expect(r.pfLumpSumNet + r.pensionAnnuityNet).toBe(0);
+  });
+
+  it('the annuitised share stays in the locked wealth as the value of its remaining payments (no cliff at access)', () => {
+    const plan = basePlan();
+    const rows = runPlan(plan).rows;
+    // Fund line: 3.5% before costs, 0.3% costs, yield tax 17% (40% government bonds).
+    const rate = (1.035 * 0.997 - 1) * (1 - 0.17);
+    expect(preparePlan(plan).pfAnnuityDiscount).toBeCloseTo(rate, 12);
+    const at = rowAt(rows, 67);
+    expect(at.pensionAnnuityNet).toBeGreaterThan(0);
+    // 28 payments left (ages 68…95), each at mid-year.
+    let factor = 0;
+    for (let k = 1; k <= 95 - 67; k++) factor += Math.pow(1 + rate, -(k - 0.5));
+    expect(annuityValueFactor(rate, 28)).toBeCloseTo(factor, 9);
+    // A negative expected return never values the payments above their nominal sum.
+    const losing = basePlan();
+    losing.pensionFund.expectedReturnPct = -5;
+    expect(preparePlan(losing).pfAnnuityDiscount).toBe(0);
+    expect(annuityValueFactor(0, 28)).toBe(28);
+    expect(at.pensionAnnuityValue).toBeCloseTo(at.pensionAnnuityNet * factor, 6);
+    expect(rowAt(rows, 95).pensionAnnuityValue).toBe(0);
+    for (const r of rows) {
+      if (r.age < 67) expect(r.pensionAnnuityValue).toBe(0);
+      expect(r.lockedNet).toBeCloseTo(r.pensionFundNet + r.companyTfrNet + (r.pensionAnnuityValue ?? 0), 6);
+      expect(r.netWorth).toBeCloseTo(r.accessibleNet + r.lockedNet, 6);
+    }
+    // Paying the fund out no longer makes half of it vanish from the net worth (it fell by 37% in today's €).
+    const real = (r: YearRow) => r.netWorth / (r.priceIndexEnd ?? r.priceIndex);
+    expect(real(at) / real(rowAt(rows, 66))).toBeGreaterThan(0.95);
   });
 
   it('RITA: equal instalments of the remaining position from accessAge until the old-age age', () => {
@@ -288,12 +346,20 @@ function expectConservationLite(plan: Plan, rows: YearRow[]): void {
 }
 
 describe('simulate — state pension and guardrails', () => {
-  it('contributivo: montante revalued at inflation + GDP, + 33% of RAL while working, × coefficient at the claim age', () => {
+  it('contributivo: montante revalued at inflation + GDP, + 33% of RAL and bonus while working, × coefficient at the claim age', () => {
     const plan = basePlan();
     plan.assets.inps.montante = 50000;
     const rows = rowsOf(plan, 50);
     const r30 = rowAt(rows, 30);
-    expect(r30.inpsMontante).toBeCloseTo(50000 * (1 + 0.02 + 0.01) + 0.33 * r30.ral, 6);
+    // The productivity bonus pays employee INPS, so it is credited to the montante too (same base as the INPS charge).
+    expect(r30.bonusGross).toBeCloseTo(2500, 9);
+    expect(r30.payroll?.gross).toBeCloseTo(r30.ral + r30.bonusGross, 9);
+    expect(r30.inpsMontante).toBeCloseTo(50000 * (1 + 0.02 + 0.01) + 0.33 * (r30.ral + r30.bonusGross), 6);
+    // A bonus paid into the pension fund or as welfare pays no INPS and is not credited.
+    const toFund = basePlan();
+    toFund.assets.inps.montante = 50000;
+    toFund.career[0].bonusRegime = 'pensionFund';
+    expect(rowAt(rowsOf(toFund, 50), 30).inpsMontante).toBeCloseTo(50000 * 1.03 + 0.33 * r30.ral, 6);
     const r55 = rowAt(rows, 55);
     expect(r55.inpsMontante).toBeCloseTo(rowAt(rows, 54).inpsMontante * 1.03, 6); // no contributions after 50
     const claim = rowAt(rows, 67);
@@ -307,6 +373,31 @@ describe('simulate — state pension and guardrails', () => {
     const late = rowsOf(plan, 50);
     expect(rowAt(late, 69).statePensionNet).toBe(0);
     expect(rowAt(late, 70).statePensionGross).toBeCloseTo((rowAt(late, 69).inpsMontante * 6.139) / 100, 6);
+  });
+
+  it('a career break with RAL 0 accrues no contribution years: the old-age pension moves to the fallback age', () => {
+    const plan = basePlan();
+    plan.profile.currentAge = 40;
+    plan.assets.inps = { contributionYears: 8, montante: 60000 };
+    const phase = { ...plan.career[0], realRaisePct: 0, bonusGrossToday: 0 };
+    plan.career = [
+      { ...phase, id: 'a', untilAge: 45, ralToday: 45000 },
+      { ...phase, id: 'break', untilAge: 50, ralToday: 0 },
+      { ...phase, id: 'b', untilAge: 67, ralToday: 45000 },
+    ];
+    plan.retirement = { mode: 'fixedAge', fixedAge: 55 };
+    const prep = preparePlan(plan);
+    // 8 + 5 (40–44) + 0 (break, 45–49) + 5 (50–54) = 18 < 20 at 67 → pensione a 71 anni con 5 anni.
+    expect(contributionYearsAt(prep, 67, 55)).toBe(18);
+    expect(contributionYearsAt(prep, 47, 55)).toBe(13);
+    expect(statePensionClaimAge(prep, 55)).toBe(71);
+    expect(runPlan(plan).summary.statePensionClaimAge).toBe(71);
+    // The same years paid: 23 years → 67.
+    plan.career[1].ralToday = 30000;
+    expect(statePensionClaimAge(preparePlan(plan), 55)).toBe(67);
+    // A break paid only with a welfare bonus has no contribution base either.
+    plan.career[1] = { ...plan.career[1], ralToday: 0, bonusGrossToday: 3000, bonusRegime: 'welfare' };
+    expect(contributionYearsAt(preparePlan(plan), 67, 55)).toBe(18);
   });
 
   it('estimate: the net monthly amount × 13 in today’s euros, from the claim age', () => {

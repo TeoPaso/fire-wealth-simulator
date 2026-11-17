@@ -64,16 +64,36 @@ function fanPoint(age: number, year: number, p: Omit<PercentileRow, 'age'>): Fan
   return { age, year, p10, p25, p50, p75, p90, outer: [p10, p90], inner: [p25, p75] };
 }
 
+/** What the fan chart plots: accessible wealth (what success is measured on, the default) or total net worth. */
+export type FanMeasure = 'accessible' | 'netWorth';
+
 /**
- * Monte Carlo net-worth percentiles (always today's €) at the start of each age. The engine's rows are end-of-year
- * values; the start point is the (certain) starting net worth.
+ * Monte Carlo percentiles (always today's €) of accessible wealth or net worth at the start of each age. The
+ * engine's rows are end-of-year values; the start point is the (certain) starting value (`startValue`: the
+ * accessible wealth or the net worth at t = 0, matching `measure`).
  */
-export function fanSeries(mc: MonteCarloResult, startNetWorth: number, currentAge: number, startYear: number): FanPoint[] {
+export function fanSeries(
+  mc: MonteCarloResult,
+  startValue: number,
+  currentAge: number,
+  startYear: number,
+  measure: FanMeasure = 'netWorth',
+): FanPoint[] {
   const out: FanPoint[] = [
-    fanPoint(currentAge, startYear, { p10: startNetWorth, p25: startNetWorth, p50: startNetWorth, p75: startNetWorth, p90: startNetWorth }),
+    fanPoint(currentAge, startYear, { p10: startValue, p25: startValue, p50: startValue, p75: startValue, p90: startValue }),
   ];
-  for (const r of mc.netWorth) out.push(fanPoint(r.age + 1, startYear + (r.age + 1 - currentAge), r));
+  const rows = measure === 'accessible' ? mc.accessible : mc.netWorth;
+  for (const r of rows) out.push(fanPoint(r.age + 1, startYear + (r.age + 1 - currentAge), r));
   return out;
+}
+
+/**
+ * The "bridge" of the plan: from the retirement age to the first unlock of locked income (pension fund or state
+ * pension), when accessible wealth alone pays the bills; null when there is none.
+ */
+export function bridgeRange(result: PlanResult): { from: number; to: number } | null {
+  const { retirementAge, bridgeYears } = result.summary;
+  return bridgeYears > 0 ? { from: retirementAge, to: retirementAge + bridgeYears } : null;
 }
 
 export interface SuccessPoint {
@@ -128,6 +148,33 @@ export function ageMarkers(plan: Plan, result: PlanResult): AgeMarker[] {
   return [...byAge.entries()].sort((a, b) => a[0] - b[0]).map(([age, kinds]) => ({ age, kinds }));
 }
 
+/**
+ * Age ranges in which spending is not covered (row.shortfall > 0), merged when consecutive. A year lived at age a is
+ * drawn from a to a + 1 on the start-of-age axis of the wealth chart.
+ */
+export function shortfallRanges(result: PlanResult): { from: number; to: number }[] {
+  const out: { from: number; to: number }[] = [];
+  for (const row of result.rows) {
+    if (!(row.shortfall > 0)) continue;
+    const last = out[out.length - 1];
+    if (last && last.to === row.age) last.to = row.age + 1;
+    else out.push({ from: row.age, to: row.age + 1 });
+  }
+  return out;
+}
+
+/**
+ * The share of the pension fund converted to a lifetime annuity at access (ordinary benefit): from that age it is
+ * yearly income, not wealth, so the wealth chart drops there. Null when no annuity is bought.
+ */
+export function annuityAtAccess(plan: Plan, result: PlanResult): { age: number; pct: number } | null {
+  if (!pensionFundMatters(plan) || plan.pensionFund.accessMode !== 'retirement') return null;
+  const pct = 100 - plan.pensionFund.capitalSharePct;
+  if (!(pct > 0)) return null;
+  const age = result.summary.pensionFundAccessAge;
+  return age >= plan.profile.currentAge && age <= plan.profile.lifeExpectancy ? { age, pct } : null;
+}
+
 /** Share of the net worth that is locked when work stops (end of the last working year), %; null if not defined. */
 export function lockedShareAtRetirement(result: PlanResult): { lockedPct: number; locked: number; netWorth: number } | null {
   const row = rowAtAge(result.rows, result.summary.retirementAge - 1);
@@ -147,6 +194,23 @@ export function medianDepletionAge(mc: MonteCarloResult): number | null {
     if (seen >= total / 2) return d.age;
   }
   return mc.depletionAges[mc.depletionAges.length - 1].age;
+}
+
+/** How the Monte Carlo success at the displayed retirement age compares with the user's target. */
+export type SuccessTone = 'good' | 'near' | 'bad';
+
+/** 'good' at or above the target, 'near' within 10 points below it, 'bad' further below. */
+export function successTone(successPct: number, targetPct: number): SuccessTone {
+  if (successPct >= targetPct) return 'good';
+  return successPct >= targetPct - 10 ? 'near' : 'bad';
+}
+
+/**
+ * The Monte Carlo result to show for the current deterministic result, or null while it belongs to another
+ * retirement age (a new analysis is on its way): a stale success rate must never get the new age as its label.
+ */
+export function currentMonteCarlo(mc: MonteCarloResult | null, result: PlanResult): MonteCarloResult | null {
+  return mc && mc.retirementAge === result.summary.retirementAge ? mc : null;
 }
 
 export type InsightTone = 'positive' | 'neutral' | 'warning';
@@ -203,11 +267,12 @@ export function buildInsights(plan: Plan, result: PlanResult, mc: MonteCarloResu
   }
 
   if (summary.avgSavingsRatePct !== null) {
+    const negative = summary.avgSavingsRatePct < 0;
     out.push({
       id: 'savingsRate',
-      tone: 'neutral',
-      key: 'results.insight.savingsRate',
-      params: { pct: format.pct(summary.avgSavingsRatePct, 0) },
+      tone: negative ? 'warning' : 'neutral',
+      key: negative ? 'results.insight.savingsNegative' : 'results.insight.savingsRate',
+      params: { pct: format.pct(Math.abs(summary.avgSavingsRatePct), 0) },
     });
   }
 
@@ -220,17 +285,30 @@ export function buildInsights(plan: Plan, result: PlanResult, mc: MonteCarloResu
     });
   }
 
+  let belowTarget = false;
   if (mc) {
     const failPct = 100 - mc.successProbabilityPct;
     const median = medianDepletionAge(mc);
+    belowTarget = mc.successProbabilityPct < plan.simulation.successTargetPct;
     if (failPct > 0 && median !== null) {
-      out.push({
+      const failures: Insight = {
         id: 'mcFailures',
-        tone: failPct > 100 - plan.simulation.successTargetPct ? 'warning' : 'neutral',
+        tone: belowTarget ? 'warning' : 'neutral',
         key: 'results.insight.mcFailures',
         params: { pct: format.pct(failPct, 0), age: format.num(median), retirementAge: format.num(mc.retirementAge) },
-      });
+      };
+      // Below the user's own target, the risk is the first thing to read.
+      if (belowTarget) out.unshift(failures);
+      else out.push(failures);
     }
+  }
+
+  // A plan that runs out of money (or fails the target) never opens with good news: positive notes become plain
+  // notes, and the reassuring "no bridge" note is dropped when the money runs out anyway.
+  if (summary.depletionAge !== null || belowTarget) {
+    return out
+      .filter((i) => !(summary.depletionAge !== null && i.id === 'noBridge'))
+      .map((i) => (i.tone === 'positive' ? { ...i, tone: 'neutral' as const } : i));
   }
   return out;
 }

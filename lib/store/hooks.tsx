@@ -106,15 +106,27 @@ export interface PlanResultState {
   error: unknown;
 }
 
+// Plans are immutable snapshots: one runPlan per plan object, shared by every component that shows it (results
+// panel, mobile tab bar…).
+const resultCache = new WeakMap<Plan, PlanResultState>();
+
+/** runPlan(plan), cached per plan object. Never throws: errors are returned in `error`. */
+export function computePlanResult(plan: Plan): PlanResultState {
+  let cached = resultCache.get(plan);
+  if (!cached) {
+    try {
+      cached = { result: runPlan(plan), error: null };
+    } catch (error) {
+      cached = { result: null, error };
+    }
+    resultCache.set(plan, cached);
+  }
+  return cached;
+}
+
 /** Memoised runPlan(plan). Never throws: errors are returned in `error`. */
 export function usePlanResult(plan: Plan): PlanResultState {
-  return useMemo(() => {
-    try {
-      return { result: runPlan(plan), error: null };
-    } catch (error) {
-      return { result: null, error };
-    }
-  }, [plan]);
+  return useMemo(() => computePlanResult(plan), [plan]);
 }
 
 /** Transient notices for the banner area, plus `dismiss(id)`. */

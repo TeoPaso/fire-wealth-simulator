@@ -1,4 +1,6 @@
-import { translate } from '@/lib/i18n/core';
+// Only the small 'common' dictionary: importing lib/i18n/core here would put every dictionary of both languages in
+// the eager chunk that has to load before anything (ROB-14).
+import { common } from '@/lib/i18n/messages/common';
 import { Skeleton } from '../ui/Skeleton';
 
 /**
@@ -9,7 +11,7 @@ export function AppSkeleton() {
   return (
     <div className="flex min-h-dvh flex-col lg:h-dvh" aria-busy="true">
       <p role="status" className="sr-only">
-        {translate('it', 'common.loading')}
+        {common.it['common.loading']}
       </p>
       <div className="border-b border-slate-800/80 px-4 py-2.5">
         <div className="mx-auto flex max-w-app flex-wrap items-center gap-2">

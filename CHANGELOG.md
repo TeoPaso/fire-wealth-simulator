@@ -474,6 +474,38 @@ Anche questi rilievi vengono da [docs/AUDIT-v1.md](docs/AUDIT-v1.md).
   → Respinto in verifica: le quote parziali sono ammesse se il CCNL o il fondo prevedono una quota minima. La v2 lo
   spiega con l'informazione `tfrPartialCheckContract`.
 
+### Revisione prima del rilascio (UX e robustezza)
+
+- **Risultato in evidenza onesto.** L'intestazione mostra affiancate l'età "nello scenario medio" e quella che
+  raggiunge la probabilità obiettivo (Monte Carlo), con un giudizio colorato (verde, ambra, rosso) sulla
+  probabilità di successo; se è sotto l'obiettivo, il primo punto di "Cosa significa" è il rischio. Con "Età fissa"
+  l'intestazione risponde alla domanda "posso smettere a N anni?". Un Monte Carlo calcolato per un'altra età non
+  viene più mostrato con la nuova etichetta.
+- **Grafici.** Il Monte Carlo mostra per default il patrimonio accessibile (su cui si misura il successo), con il
+  ponte fino allo sblocco evidenziato e un selettore per il patrimonio netto. Gli anni con spese non coperte sono
+  in rosso nel grafico del patrimonio e nei flussi della pensione. Nota sulla quota del fondo convertita in
+  rendita. Le etichette della sensibilità dicono di quanto varia ogni ipotesi ("±1 p.p.").
+- **Primo utilizzo.** Il piano di esempio è dichiarato come tale, con i quattro dati da inserire per primi
+  (spuntati quando li cambi). Le sezioni sono raggruppate in essenziali, dettagli e avanzate. Cambiando l'età
+  attuale l'app propone di spostare le fasi di carriera (con annulla). Le note dei piani convertiti dalla v1
+  (età ipotizzata, spese stimate…) sono mostrate e modificabili.
+- **Inserimento.** I campi numerici confermano il valore quando smetti di scrivere, premi Invio o esci dal
+  campo, non a ogni tasto. Le spiegazioni "?" non si aprono più solo passandoci con il tasto Tab. Dopo
+  un'eliminazione il focus resta nell'elenco. Su telefono ogni pannello ricorda la sua posizione, la barra in
+  basso mostra l'età FIRE e non copre più il campo attivo. Campi del fondo pensione disattivati quando il fondo è
+  spento.
+- **Dati salvati e importati.** Testi non validi (per esempio un nome che non è un testo) vengono convertiti,
+  dopo una copia di sicurezza, invece di bloccare l'app; un errore imprevisto mostra comunque "Esporta i dati".
+  "Ripristina gli esempi" non cancella più i piani se la copia di sicurezza non si può scrivere. Le copie di
+  sicurezza (al massimo 5) si possono ripristinare, scaricare o eliminare dal menu. Importazioni troppo grandi o
+  complesse vengono rifiutate con un messaggio. Con più schede aperte una modifica non salvata non va più persa, e
+  ogni scheda tiene il suo piano attivo, lingua e unità.
+- **Offline e prestazioni.** L'app parte offline dopo una sola visita online: l'elenco dei file viene generato
+  dopo la build (`scripts/sw-precache.mjs`) e la versione della cache dipende dal contenuto. Il service worker
+  risponde solo alla pagina dell'app, usa la copia in cache se la rete è lenta o il sito risponde 5xx, e non
+  accumula file vecchi. Le analisi Monte Carlo superate vengono interrotte; le schede in background non
+  ricalcolano. I grafici si caricano a parte, dopo il pannello dei dati.
+
 ### Limiti noti
 
 Le semplificazioni del modello, per esempio i coefficienti di trasformazione fissi, la rendita del fondo non

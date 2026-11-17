@@ -13,7 +13,8 @@
  *    at retirement, Monte Carlo success, payroll card = computePayroll), and the real / nominal toggle shows
  *    real = nominal / price index (flows: start-of-year index; balances: end-of-year index);
  *  - editing the monthly expenses changes the headline (to the engine's value) and survives a reload;
- *  - the service worker becomes ready within 5 s;
+ *  - the service worker becomes ready within 5 s; the app starts offline in a FRESH browser after a single online
+ *    visit (cold start), also with a query string, and after reloads;
  *  - in English, the visible text of the main panels contains no common Italian UI words and no raw i18n keys;
  *  - no horizontal overflow at 375 px and 1440 px (both languages, every results tab, both mobile panels).
  *
@@ -259,6 +260,16 @@ async function main() {
     ({ chromium } = createRequire(import.meta.url)('playwright'));
   } catch {
     console.error('The "playwright" package is not resolvable from this project (it is expected to be preinstalled).');
+    return 1;
+  }
+
+  // The post-build step of `npm run build` (precache manifest in sw.js); idempotent, so also fine after it ran.
+  try {
+    const { injectIntoBuild } = await import('./sw-precache.mjs');
+    const { version, count } = injectIntoBuild(OUT_DIR);
+    console.log(`Service worker precache: ${count} files, version ${version}`);
+  } catch (error) {
+    console.error(`Could not inject the service-worker precache manifest: ${error?.message ?? error}`);
     return 1;
   }
 
@@ -509,7 +520,7 @@ async function main() {
       expectEqual(state, 'active:/sw.js', 'service worker');
     });
 
-    await step('works offline after the first visit (service worker cache)', async () => {
+    await step('works offline after reloading (service worker cache)', async () => {
       offline = true;
       await context.setOffline(true);
       try {
@@ -522,6 +533,30 @@ async function main() {
       }
       await page.reload({ waitUntil: 'load' });
       await waitForResults(page);
+    });
+
+    await step('cold start offline after ONE online visit in a fresh browser (also with a query string)', async () => {
+      const fresh = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+      try {
+        const cold = await fresh.newPage();
+        const coldNotes = watch(cold, 'cold-offline');
+        await cold.goto(base, { waitUntil: 'load' });
+        await waitForResults(cold);
+        // Installed (precache done) and controlling the page; give the page time to report what it loaded.
+        await cold.waitForFunction(() => navigator.serviceWorker?.controller != null, null, { timeout: 10_000 });
+        await cold.waitForTimeout(1500);
+        offline = true;
+        await fresh.setOffline(true);
+        await cold.reload({ waitUntil: 'load' });
+        await waitForResults(cold);
+        await cold.goto(`${base}?utm_source=e2e`, { waitUntil: 'load' });
+        await waitForResults(cold);
+        return `${coldNotes.length} expected offline note(s)`;
+      } finally {
+        await fresh.setOffline(false);
+        offline = false;
+        await fresh.close();
+      }
     });
 
     console.log('Desktop 1440×900, English');

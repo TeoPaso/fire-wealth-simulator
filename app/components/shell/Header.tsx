@@ -27,8 +27,8 @@ export function Header() {
             <Flame className="h-5 w-5" />
           </span>
           <h1 className="sr-only text-[15px] font-semibold leading-tight tracking-tight text-slate-100 sm:not-sr-only sm:whitespace-nowrap">
-            {t('common.app.shortName')}
-            <span className="ml-1.5 font-normal text-slate-400">{t('common.app.country')}</span>
+            {t('common.app.shortName')}{' '}
+            <span className="ml-1 font-normal text-slate-400">{t('common.app.country')}</span>
           </h1>
         </div>
 

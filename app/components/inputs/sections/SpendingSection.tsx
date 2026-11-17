@@ -3,7 +3,7 @@
 import { CalendarClock, Plus } from 'lucide-react';
 import type { LifeEvent } from '@/lib/engine';
 import { useFormat, useT } from '@/lib/i18n';
-import { uniqueId } from '@/lib/store';
+import { uniqueId, uniqueName } from '@/lib/store';
 import { Button, EmptyState } from '../../ui';
 import { itemKeys, listOf, numOr, usePlanEditor } from '../editor';
 import { FieldGrid, ItemActions, ItemCard, PathIssues, PlanNumber, PlanText, SubHeading } from '../fields';
@@ -20,9 +20,11 @@ export function SpendingSection() {
   const addEvent = () =>
     update((d) => {
       const age = numOr(d.profile.currentAge);
+      const labels = new Set(listOf(d.spending.events).map((e) => (e && typeof e === 'object' ? e.label : '')));
       const event: LifeEvent = {
         id: uniqueId('event', takenIds(d)),
-        label: t('inputs.spending.newEventLabel'),
+        // "Nuovo evento", "Nuovo evento (2)"…: items (and their delete buttons) can be told apart (UX-20).
+        label: uniqueName(t('inputs.spending.newEventLabel'), labels),
         age: Number.isFinite(age) ? age + 1 : 0,
         amountToday: 0,
         years: 1,

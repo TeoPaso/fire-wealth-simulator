@@ -178,6 +178,20 @@ export function postRunIssues(prep: PreparedPlan, sim: SimulationResult): Issue[
   const rules = prep.rules;
   const issues: Issue[] = [];
   const s = sim.signals;
+  if (s.shortfallWhileWorking) {
+    // The plan runs out of accessible money before work stops: every later retirement age fails in that same year,
+    // so a null fiAge is caused by this cash gap, not by the FI target.
+    const { age, amountToday, eventIndex } = s.shortfallWhileWorking;
+    const event = eventIndex !== null ? plan.spending.events[eventIndex] : undefined;
+    const params: Record<string, string | number> = { age, amount: Math.round(amountToday) };
+    if (event && event.label.trim() !== '') params.event = event.label;
+    issues.push({
+      level: 'warning',
+      path: event ? `spending.events[${eventIndex}].amountToday` : 'spending.monthlyToday',
+      code: 'shortfallWhileWorking',
+      params,
+    });
+  }
   if (s.negativeSavingsWhileWorking) {
     issues.push({
       level: 'warning',

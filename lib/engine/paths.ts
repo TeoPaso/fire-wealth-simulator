@@ -13,9 +13,12 @@ export const MARKET_MODEL = {
   /** Correlation of an 'other' asset with anything, and of the fund with bonds/other assets. */
   otherCorrelation: 0.5,
   fundBondCorrelation: 0.5,
-  /** Simulated yearly inflation is clipped to this range (decimals). */
-  inflationMin: -0.03,
-  inflationMax: 0.15,
+  /**
+   * Simulated yearly inflation is clipped to the plan's mean ± this many standard deviations. The clip is symmetric,
+   * so the mean and the median of the simulated inflation stay at market.inflationPct (as on the deterministic path);
+   * with the validation limits (mean ≥ −5%, volatility ≤ 20%) inflation stays above −100%.
+   */
+  inflationClipSigmas: 3,
 } as const;
 
 /** Deterministic path: every year uses the expected (median) returns and the expected inflation. */
@@ -98,6 +101,7 @@ export function createPathGenerator(plan: Plan, years: number, seed: number): (r
   const fundFixed = plan.pensionFund.expectedReturnPct / 100;
   const inflationMean = plan.market.inflationPct / 100;
   const inflationVol = plan.market.inflationVolatilityPct / 100;
+  const clip = MARKET_MODEL.inflationClipSigmas;
   const L = model.factor;
 
   return (runIndex: number): MarketPath => {
@@ -120,8 +124,7 @@ export function createPathGenerator(plan: Plan, years: number, seed: number): (r
       }
       assetReturns[t] = row;
       pensionFundReturns[t] = fund;
-      const pi = inflationMean + inflationVol * normal();
-      inflation[t] = Math.min(MARKET_MODEL.inflationMax, Math.max(MARKET_MODEL.inflationMin, pi));
+      inflation[t] = inflationMean + inflationVol * Math.min(clip, Math.max(-clip, normal()));
     }
     return { assetReturns, pensionFundReturns, inflation };
   };

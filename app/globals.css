@@ -83,3 +83,14 @@
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * < 1024px the page scrolls under the fixed bottom tab bar (h-16 + safe area): keep focused fields (Tab, the
+ * virtual keyboard's "next") and scrollIntoView targets clear of it (WCAG 2.4.11).
+ */
+@media (max-width: 1023.98px) {
+  html {
+    scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+    scroll-padding-top: 0.75rem;
+  }
+}

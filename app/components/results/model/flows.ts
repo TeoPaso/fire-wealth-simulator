@@ -68,6 +68,8 @@ export interface RetiredFlow {
   withdrawals: number;
   taxes: number;
   spending: number;
+  /** Spending not covered by any source (the plan has run out of accessible money), >= 0. */
+  shortfall: number;
 }
 
 export function workingFlows(rows: readonly YearRow[], mode: ValueMode): WorkingFlow[] {
@@ -97,6 +99,7 @@ export function retiredFlows(rows: readonly YearRow[], mode: ValueMode): Retired
       withdrawals: flowValue(r, netWithdrawals(r), mode),
       taxes: flowValue(r, retiredTaxes(r), mode),
       spending: flowValue(r, yearSpending(r), mode),
+      shortfall: flowValue(r, Math.max(0, r.shortfall), mode),
     }));
 }
 

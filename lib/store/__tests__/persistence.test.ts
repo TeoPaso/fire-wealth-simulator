@@ -186,7 +186,7 @@ describe('loadState', () => {
     expect(migrateV1State).toHaveBeenCalledWith({ version: 1, scenarios: [] }, { now: NOW.toISOString() });
     expect(result.source).toBe('legacy');
     expect(result.state.plans.map((p) => p.id)).toEqual(['migrated-1']);
-    expect(result.notices).toEqual([{ level: 'info', messageKey: 'common.notice.migrated', params: { count: 1 } }]);
+    expect(result.notices).toEqual([{ level: 'info', messageKey: 'common.notice.migrated', params: { count: 1, age: 30 } }]);
     expect(result.shouldSave).toBe(true);
   });
 

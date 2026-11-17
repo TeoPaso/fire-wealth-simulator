@@ -41,6 +41,9 @@ const it = {
   'common.example.baseHint': 'Ipotesi centrali',
   'common.example.prudentHint': 'Rendimenti più bassi, inflazione più alta',
   'common.example.optimisticHint': 'Rendimenti più alti, inflazione più bassa',
+  'common.example.asset.equity-global': 'Azionario globale (ETF)',
+  'common.example.asset.bond-aggregate': 'Obbligazionario globale EUR hedged (ETF)',
+  'common.example.pensionFund': 'Fondo negoziale — comparto bilanciato',
 
   'common.lang.label': 'Lingua',
   'common.lang.it': 'IT',
@@ -58,6 +61,7 @@ const it = {
   'common.menu.open': 'Apri il menu',
   'common.menu.export': 'Esporta JSON',
   'common.menu.import': 'Importa JSON…',
+  'common.menu.backups': 'Copie di sicurezza…',
   'common.menu.reset': 'Ripristina gli esempi…',
 
   'common.import.title': 'Importa piani',
@@ -74,17 +78,32 @@ const it = {
   'common.import.error.notAPlan': 'L’elemento n. {index} non è un piano e verrà ignorato.',
   'common.import.error.newerVersion':
     'Il file proviene da una versione più recente dell’app (schema {version}): alcuni dati potrebbero non essere riconosciuti.',
-  'common.import.legacyConverted':
-    'File della versione precedente: gli scenari sono stati convertiti. Controlla i dati dopo l’importazione.',
+  'common.import.legacyConverted': 'File della versione precedente: gli scenari sono stati convertiti con alcune ipotesi (età attuale {age} anni, spese mensili stimate). Le note di ogni piano, in cima ai dati, dicono cosa controllare.',
+  'common.import.error.tooLarge': 'Il file è troppo grande per essere un export dell’app (massimo {max} MB).',
+  'common.import.error.tooManyPlans': 'Il file contiene {count} piani: se ne possono importare al massimo {max} alla volta.',
+  'common.import.error.tooComplex': 'Il file ha una struttura troppo complessa (troppi livelli annidati) e non può essere importato.',
+  'common.import.coercedFields': '{count} campi di testo contenevano valori non validi (per esempio un nome che non è un testo): sono stati convertiti in testo o riportati al valore predefinito.',
 
   'common.reset.title': 'Ripristinare i piani di esempio?',
   'common.reset.body':
     'Tutti i tuoi piani verranno sostituiti dai tre piani di esempio. Una copia di sicurezza resta nel browser, ma ti consigliamo di esportare prima un file JSON.',
   'common.reset.confirm': 'Ripristina',
+  'common.backups.title': 'Copie di sicurezza',
+  'common.backups.intro': 'L’app salva qui una copia dei piani prima di ripristinare gli esempi e quando i dati salvati non si possono leggere (al massimo 5 copie: la più vecchia viene sostituita). Ripristinare una copia aggiunge i suoi piani come nuovi piani.',
+  'common.backups.empty': 'Nessuna copia di sicurezza in questo browser.',
+  'common.backups.size': '{size} KB',
+  'common.backups.restore': 'Ripristina',
+  'common.backups.download': 'Scarica',
+  'common.backups.delete': 'Elimina',
+  'common.backups.restoreFor': 'Ripristina la copia del {date}',
+  'common.backups.downloadFor': 'Scarica la copia del {date}',
+  'common.backups.deleteFor': 'Elimina la copia del {date}',
+  'common.reset.backupFailed': 'Non è stato possibile salvare una copia di sicurezza dei piani attuali (spazio del browser esaurito o non disponibile). Esporta prima un file JSON: ripristinando adesso i piani attuali andrebbero persi.',
+  'common.reset.forceConfirm': 'Ripristina senza copia',
+  'common.reset.exportFirst': 'Esporta JSON',
 
   'common.notices.label': 'Avvisi',
-  'common.notice.migrated':
-    'Abbiamo convertito i dati della versione precedente ({count} piani). Controllali: v2 aggiunge spese, età e pensioni.',
+  'common.notice.migrated': 'Abbiamo convertito i dati della versione precedente ({count} piani) con alcune ipotesi: età attuale {age} anni e spese mensili stimate. Controlla le note in cima ai dati di ogni piano.',
   'common.notice.migrationFailed':
     'Abbiamo trovato dati della versione precedente ma non è stato possibile convertirli: partiamo dai piani di esempio. I vecchi dati restano salvati nel browser.',
   'common.notice.corrupted':
@@ -102,10 +121,16 @@ const it = {
   'common.notice.importDone': 'Piani importati: {count}.',
   'common.notice.resetDone': 'Piani di esempio ripristinati. Copia dei piani precedenti: {key}.',
   'common.notice.resetDoneNoBackup': 'Piani di esempio ripristinati.',
+  'common.notice.coercedFields': '{count} campi di testo salvati contenevano valori non validi e sono stati convertiti. Copia dei dati originali: {key}.',
+  'common.notice.importTooLarge': 'Importazione annullata: i {count} piani non entrano nello spazio del browser e le modifiche successive non verrebbero salvate. Elimina qualche piano o copia di sicurezza e riprova.',
 
   'common.nav.label': 'Sezioni',
   'common.nav.inputs': 'Dati',
   'common.nav.results': 'Risultati',
+  'common.nav.badgeAge': 'puoi smettere di lavorare a {age} anni',
+  'common.nav.badgeNone': 'indipendenza finanziaria non raggiunta',
+  'common.nav.badgeErrors.one': '1 dato da correggere',
+  'common.nav.badgeErrors.other': '{count} dati da correggere',
   'common.panel.inputs': 'Dati del piano',
   'common.panel.results': 'Risultati del piano',
   'common.placeholder.inputsTitle': 'Dati del piano',
@@ -120,6 +145,9 @@ const it = {
   'common.error.title': 'Qualcosa è andato storto in questa sezione',
   'common.error.body': 'I tuoi dati sono al sicuro nel browser. Puoi riprovare oppure esportarli in un file JSON.',
   'common.error.export': 'Esporta i dati',
+  'common.appError.title': 'La pagina non riesce a mostrare i tuoi piani',
+  'common.appError.body': 'Qualcosa nei dati salvati o nell’app ha bloccato la pagina. I tuoi dati sono ancora nel browser: esportali in un file JSON prima di tutto. Se il problema resta dopo “Riprova”, puoi ripristinare i piani di esempio (una copia dei piani attuali resta nel browser).',
+  'common.appError.reset': 'Ripristina gli esempi',
 
   'common.ui.help': 'Aiuto',
   'common.ui.helpFor': 'Aiuto: {label}',
@@ -189,6 +217,9 @@ const en: Record<keyof typeof it, string> = {
   'common.example.baseHint': 'Central assumptions',
   'common.example.prudentHint': 'Lower returns, higher inflation',
   'common.example.optimisticHint': 'Higher returns, lower inflation',
+  'common.example.asset.equity-global': 'Global equity (ETF)',
+  'common.example.asset.bond-aggregate': 'Global bonds, EUR hedged (ETF)',
+  'common.example.pensionFund': 'Industry pension fund — balanced line',
 
   'common.lang.label': 'Language',
   'common.lang.it': 'IT',
@@ -206,6 +237,7 @@ const en: Record<keyof typeof it, string> = {
   'common.menu.open': 'Open menu',
   'common.menu.export': 'Export JSON',
   'common.menu.import': 'Import JSON…',
+  'common.menu.backups': 'Backups…',
   'common.menu.reset': 'Reset to examples…',
 
   'common.import.title': 'Import plans',
@@ -221,17 +253,32 @@ const en: Record<keyof typeof it, string> = {
   'common.import.error.notAPlan': 'Item #{index} is not a plan and will be skipped.',
   'common.import.error.newerVersion':
     'The file comes from a newer version of the app (schema {version}): some data may not be recognised.',
-  'common.import.legacyConverted':
-    'File from the previous version: its scenarios were converted. Check the data after importing.',
+  'common.import.legacyConverted': 'File from the previous version: its scenarios were converted with some assumptions (current age {age}, estimated monthly expenses). Each plan’s notes, at the top of the inputs, say what to check.',
+  'common.import.error.tooLarge': 'The file is too large to be an export of the app (maximum {max} MB).',
+  'common.import.error.tooManyPlans': 'The file contains {count} plans: at most {max} can be imported at a time.',
+  'common.import.error.tooComplex': 'The file is too complex (too many nested levels) and cannot be imported.',
+  'common.import.coercedFields': '{count} text fields held invalid values (for example a name that is not text): they were converted to text or reset to the default.',
 
   'common.reset.title': 'Reset to the example plans?',
   'common.reset.body':
     'All your plans will be replaced by the three example plans. A backup copy stays in the browser, but we recommend exporting a JSON file first.',
   'common.reset.confirm': 'Reset',
+  'common.backups.title': 'Backups',
+  'common.backups.intro': 'The app keeps a copy of your plans here before resetting to the examples and when saved data cannot be read (at most 5 copies: the oldest is replaced). Restoring a copy adds its plans as new plans.',
+  'common.backups.empty': 'No backups in this browser.',
+  'common.backups.size': '{size} KB',
+  'common.backups.restore': 'Restore',
+  'common.backups.download': 'Download',
+  'common.backups.delete': 'Delete',
+  'common.backups.restoreFor': 'Restore the backup of {date}',
+  'common.backups.downloadFor': 'Download the backup of {date}',
+  'common.backups.deleteFor': 'Delete the backup of {date}',
+  'common.reset.backupFailed': 'A backup of the current plans could not be saved (browser storage full or unavailable). Export a JSON file first: resetting now would lose the current plans.',
+  'common.reset.forceConfirm': 'Reset without a backup',
+  'common.reset.exportFirst': 'Export JSON',
 
   'common.notices.label': 'Notices',
-  'common.notice.migrated':
-    'We converted the data of the previous version ({count} plans). Please check it: v2 adds expenses, ages and pensions.',
+  'common.notice.migrated': 'We converted the data of the previous version ({count} plans) with some assumptions: current age {age} and estimated monthly expenses. Check the notes at the top of each plan’s inputs.',
   'common.notice.migrationFailed':
     'We found data from the previous version but could not convert it, so we start from the example plans. The old data stays saved in the browser.',
   'common.notice.corrupted':
@@ -248,10 +295,16 @@ const en: Record<keyof typeof it, string> = {
   'common.notice.importDone': 'Plans imported: {count}.',
   'common.notice.resetDone': 'Example plans restored. Copy of the previous plans: {key}.',
   'common.notice.resetDoneNoBackup': 'Example plans restored.',
+  'common.notice.coercedFields': '{count} saved text fields held invalid values and were converted. Copy of the original data: {key}.',
+  'common.notice.importTooLarge': 'Import cancelled: the {count} plans do not fit in the browser storage, and later changes would not be saved. Delete some plans or backups and try again.',
 
   'common.nav.label': 'Sections',
   'common.nav.inputs': 'Inputs',
   'common.nav.results': 'Results',
+  'common.nav.badgeAge': 'you can stop working at {age}',
+  'common.nav.badgeNone': 'financial independence not reached',
+  'common.nav.badgeErrors.one': '1 input to fix',
+  'common.nav.badgeErrors.other': '{count} inputs to fix',
   'common.panel.inputs': 'Plan inputs',
   'common.panel.results': 'Plan results',
   'common.placeholder.inputsTitle': 'Plan inputs',
@@ -266,6 +319,9 @@ const en: Record<keyof typeof it, string> = {
   'common.error.title': 'Something went wrong in this section',
   'common.error.body': 'Your data is safe in the browser. You can try again or export it to a JSON file.',
   'common.error.export': 'Export data',
+  'common.appError.title': 'The page cannot show your plans',
+  'common.appError.body': 'Something in the saved data or in the app stopped the page. Your data is still in the browser: export it to a JSON file first. If the problem persists after “Try again”, you can reset to the example plans (a copy of the current plans stays in the browser).',
+  'common.appError.reset': 'Reset to examples',
 
   'common.ui.help': 'Help',
   'common.ui.helpFor': 'Help: {label}',

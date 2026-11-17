@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computePayroll, employeeInps } from '../payroll';
+import { computePayroll, deductiblePensionRoom, employeeInps } from '../payroll';
 import { cloneRules, IT_2026 } from '../../rules/it2026';
 import type { PayrollBreakdown, PayrollInput } from '../../types';
 
@@ -332,5 +332,35 @@ describe('computePayroll — indexing and guard rails', () => {
       expect(p.netIncome).toBeCloseTo(expectedNet, 6);
       for (const value of Object.values(p)) expect(Number.isFinite(value)).toBe(true);
     }
+  });
+});
+
+describe('deductiblePensionRoom', () => {
+  const input = (overrides: Partial<PayrollInput>): PayrollInput => ({
+    ral: 0,
+    ordinaryBonus: 0,
+    productivityBonus: 0,
+    priorYearIncome: 0,
+    employeePensionContribution: 0,
+    employerPensionContribution: 0,
+    calendarYear: 2026,
+    priceIndex: 1,
+    ...overrides,
+  });
+
+  it('is the cap left by the employer when the income is large enough, independent of the employee contribution', () => {
+    // 5,300 − 2% × 40,000 = 4,500
+    expect(deductiblePensionRoom(input({ ral: 40000, employerPensionContribution: 800 }), IT_2026)).toBeCloseTo(4500, 9);
+    expect(deductiblePensionRoom(input({ ral: 40000, employerPensionContribution: 800, employeePensionContribution: 9000 }), IT_2026)).toBeCloseTo(4500, 9);
+    expect(deductiblePensionRoom(input({ ral: 40000, employerPensionContribution: 6000 }), IT_2026)).toBe(0);
+  });
+
+  it('is limited by the income after INPS, 0 without a salary, and matches computePayroll’s deduction', () => {
+    expect(deductiblePensionRoom(input({}), IT_2026)).toBe(0);
+    // 3,000 − 9.19% INPS = 2,724.30
+    expect(deductiblePensionRoom(input({ ral: 3000 }), IT_2026)).toBeCloseTo(2724.3, 6);
+    const p = payroll({ ral: 3000, employeePensionContribution: 5300 });
+    expect(p.deductiblePension).toBeCloseTo(2724.3, 6);
+    expect(p.nonDeductiblePension).toBeCloseTo(5300 - 2724.3, 6);
   });
 });

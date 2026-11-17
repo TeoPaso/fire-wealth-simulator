@@ -1,6 +1,6 @@
 import type { BonusRegime, MarketPath, PayrollBreakdown, PayrollInput, Plan, RebalancingMode, TaxRules, YearRow } from './types';
 import { irpefIndexFactor } from './tax/irpef';
-import { computePayroll, inpsCeiling, productivityBonusEligible, productivityBonusRegime } from './tax/payroll';
+import { computePayroll, deductiblePensionRoom, inpsCeiling, productivityBonusEligible, productivityBonusRegime } from './tax/payroll';
 import { netPensionIncome } from './tax/pensionIncome';
 import { exitTaxRatePct, yieldTaxRatePct } from './tax/pensionFund';
 import { tfrQuota, tfrRevaluationRatePct, tfrSeparateTaxRatePct } from './tax/tfr';
@@ -70,6 +70,11 @@ export interface PreparedPlan {
   pfAccessMode: Plan['pensionFund']['accessMode'];
   pfCapitalShare: number;
   pfAnnuityRate: number;
+  /**
+   * Yearly rate used to value the remaining annuity payments in the locked wealth: the fund line's expected return
+   * net of costs and yield tax, never below 0 (what the converted capital would have earned had it stayed in the fund).
+   */
+  pfAnnuityDiscount: number;
   pfMembershipStartYear: number;
   oldAgeAge: number;
   spMode: Plan['statePension']['mode'];
@@ -80,6 +85,13 @@ export interface PreparedPlan {
   installments: number;
   coefficientAges: number[];
   contributionYears0: number;
+  /**
+   * contributingYears[k] = working years with an INPS contribution base (RAL + taxable bonuses > 0) among the first k
+   * years of the plan (k = 0 … years). A phase with RAL 0 (sabbatical, career break) accrues no contribution years.
+   */
+  contributingYears: Int32Array;
+  /** Whether the last career phase (in force after its untilAge too) pays INPS contributions. */
+  lastPhaseContributes: boolean;
   montante0: number;
   montanteEstimated: boolean;
   cash0: number;
@@ -132,6 +144,12 @@ export function preparePlan(plan: Plan): PreparedPlan {
     .filter((a) => Number.isFinite(a))
     .sort((a, b) => a - b);
   const currentAge = plan.profile.currentAge;
+  const years = plan.profile.lifeExpectancy - currentAge + 1;
+  const contributingYears = new Int32Array((Number.isInteger(years) && years > 0 ? years : 0) + 1);
+  for (let t = 0; t + 1 < contributingYears.length; t++) {
+    const contributes = phases.length > 0 && phaseContributes(phaseAt(phases, currentAge + t));
+    contributingYears[t + 1] = contributingYears[t] + (contributes ? 1 : 0);
+  }
   const firstRal = phases.length > 0 ? phaseAt(phases, currentAge).ralToday : 0;
   const montanteKnown = plan.assets.inps.montante > 0;
   const montante0 =
@@ -146,7 +164,7 @@ export function preparePlan(plan: Plan): PreparedPlan {
     currentAge,
     lifeExpectancy: plan.profile.lifeExpectancy,
     startYear: plan.profile.startYear,
-    years: plan.profile.lifeExpectancy - currentAge + 1,
+    years,
     nAssets: n,
     weights: Float64Array.from(assets.map((a) => a.allocationPct / 100)),
     ter: Float64Array.from(assets.map((a) => a.terPct / 100)),
@@ -171,6 +189,7 @@ export function preparePlan(plan: Plan): PreparedPlan {
     pfAccessMode: plan.pensionFund.accessMode,
     pfCapitalShare: plan.pensionFund.capitalSharePct / 100,
     pfAnnuityRate: plan.pensionFund.annuityRatePct / 100,
+    pfAnnuityDiscount: annuityDiscountRate(plan, rules),
     pfMembershipStartYear: plan.assets.pensionFund.membershipStartYear,
     oldAgeAge: rules.statePension.oldAgeAge,
     spMode: plan.statePension.mode,
@@ -181,6 +200,8 @@ export function preparePlan(plan: Plan): PreparedPlan {
     installments: rules.statePension.installmentsPerYear,
     coefficientAges,
     contributionYears0: plan.assets.inps.contributionYears,
+    contributingYears,
+    lastPhaseContributes: phases.length > 0 && phaseContributes(phases[phases.length - 1]),
     montante0,
     montanteEstimated: plan.statePension.mode === 'contributivo' && !montanteKnown,
     cash0: plan.assets.cash,
@@ -195,6 +216,14 @@ export function preparePlan(plan: Plan): PreparedPlan {
     guardrails: plan.withdrawal.strategy === 'guardrails',
     cutPct: plan.withdrawal.guardrailCutPct,
   };
+}
+
+/**
+ * Whether a working year of the phase pays INPS contributions: its contribution base (RAL + ordinary or productivity
+ * bonus, the same base computePayroll charges INPS on) is positive. Welfare and bonus-to-fund are contribution-free.
+ */
+function phaseContributes(p: PreparedPhase): boolean {
+  return p.ralToday > 0 || (p.bonusToday > 0 && (p.regime === 'ordinary' || p.regime === 'productivity'));
 }
 
 /** Career phase in force at `age`: the first with untilAge > age, else the last one (SPEC §5.1). */
@@ -223,9 +252,16 @@ export function transformationCoefficient(prep: PreparedPlan, age: number): numb
   return table[String(last)];
 }
 
-/** Contribution years accrued by `age` when work stops at `retirementAge` (one per working year). */
+/**
+ * Contribution years accrued by `age` when work stops at `retirementAge`: one per working year with a contribution
+ * base (a year with RAL 0 counts nothing).
+ */
 export function contributionYearsAt(prep: PreparedPlan, age: number, retirementAge: number): number {
-  return prep.contributionYears0 + Math.max(0, Math.min(age, retirementAge) - prep.currentAge);
+  const k = Math.max(0, Math.min(age, retirementAge) - prep.currentAge);
+  const cum = prep.contributingYears;
+  const last = cum.length - 1;
+  const counted = k <= last ? cum[k] : cum[last] + (prep.lastPhaseContributes ? k - last : 0);
+  return prep.contributionYears0 + counted;
 }
 
 /**
@@ -365,32 +401,32 @@ export function workYear(prep: PreparedPlan, cache: WorkCache, t: number): WorkY
   const regime = ph.regime;
 
   let employer = 0;
-  let employee = 0;
+  let base = 0;
   if (prep.pfEnabled) {
     employer = ph.employeePct > 0 ? (ral * ph.employerPct) / 100 : 0;
-    const base = (ral * ph.employeePct) / 100;
-    let voluntary = 0;
-    if (prep.voluntaryMode === 'fillCap') voluntary = Math.max(0, prep.cap - employer - base);
-    else if (prep.voluntaryMode === 'fixed') voluntary = prep.voluntaryFixedToday * P;
-    employee = base + voluntary;
+    base = (ral * ph.employeePct) / 100;
   }
+  const fillCap = prep.pfEnabled && prep.voluntaryMode === 'fillCap';
   const productivityBonus = regime === 'productivity' ? bonus : 0;
   const input: PayrollInput = {
     ral,
     ordinaryBonus: regime === 'ordinary' ? bonus : 0,
     productivityBonus,
-    priorYearIncome: 0,
-    employeePensionContribution: employee,
+    priorYearIncome: t > 0 ? workYear(prep, cache, t - 1).employmentIncome : 0,
+    employeePensionContribution: base + (prep.pfEnabled && prep.voluntaryMode === 'fixed' ? prep.voluntaryFixedToday * P : 0),
     employerPensionContribution: employer,
     calendarYear: year,
     priceIndex: P,
   };
-  if (t > 0) {
-    input.priorYearIncome = workYear(prep, cache, t - 1).employmentIncome;
-  } else if (productivityBonus > 0) {
+  // fillCap tops the employee contribution up to the deductible room: the cap left by the employer, limited by the
+  // income it is deducted from (nothing is withheld from a year without salary).
+  if (fillCap) input.employeePensionContribution = Math.max(base, deductiblePensionRoom(input, rules));
+  if (t === 0 && productivityBonus > 0) {
     // No history before t = 0: the year's own employment income is the best estimate of the prior year's.
     input.priorYearIncome = employmentIncomeOf(computePayroll(input, rules, { derived: false }));
+    if (fillCap) input.employeePensionContribution = Math.max(base, deductiblePensionRoom(input, rules));
   }
+  const employee = input.employeePensionContribution;
   const payroll = computePayroll(input, rules, { derived: cache.derived });
   const quota = tfrQuota(ral, rules);
   const toFund = prep.pfEnabled ? (quota * ph.tfrToFundPct) / 100 : 0;
@@ -443,6 +479,12 @@ export interface SimulateOptions {
 export interface SimulationSignals {
   /** First working year whose recurring budget (savings excluding life events) is negative. */
   negativeSavingsWhileWorking: { age: number } | null;
+  /**
+   * First working year with a shortfall (life events included): accessible money runs out while still working, so
+   * the plan fails whatever the retirement age after it. `amountToday` = shortfall / P_t; `eventIndex` = the largest
+   * expense event active that year (index in plan.spending.events), if any.
+   */
+  shortfallWhileWorking: { age: number; amountToday: number; eventIndex: number | null } | null;
   bonusAboveCap: { age: number; phaseIndex: number; cap: number } | null;
   bonusIneligibleIncome: { age: number; phaseIndex: number } | null;
   contributionAboveCap: { age: number; phaseIndex: number } | null;
@@ -468,6 +510,27 @@ const PF_ACCUMULATING = 0;
 const PF_RITA = 1;
 const PF_ANNUITY = 2;
 const PF_DONE = 3;
+
+/**
+ * Discount rate of the annuity value: the fund line's expected return net of costs and yield tax, floored at 0 (a
+ * negative rate would value the remaining payments above their nominal sum).
+ */
+function annuityDiscountRate(plan: Plan, rules: TaxRules): number {
+  const net = (1 + plan.pensionFund.expectedReturnPct / 100) * (1 - plan.pensionFund.costPct / 100) - 1;
+  return net > 0 ? net * (1 - yieldTaxRatePct(plan.pensionFund.govBondSharePct, rules) / 100) : 0;
+}
+
+/**
+ * End-of-year value of `years` remaining yearly payments of 1 paid at mid-year (SPEC §2 convention), discounted at
+ * `rate`: Σ_{k=1..years} (1 + rate)^−(k − ½).
+ */
+export function annuityValueFactor(rate: number, years: number): number {
+  if (years <= 0) return 0;
+  const g = 1 + rate;
+  if (!(g > 0)) return 0;
+  const sum = Math.abs(rate) < 1e-12 ? years : (1 - Math.pow(g, -years)) / rate;
+  return sum * Math.sqrt(g);
+}
 
 function clamp01(x: number): number {
   return x > 1 ? 1 : x > 0 ? x : 0;
@@ -521,6 +584,7 @@ export function simulatePrepared(prep: PreparedPlan, opts: SimulateOptions): Sim
   const rows: YearRow[] | null = detail ? [] : null;
   const signals: SimulationSignals = {
     negativeSavingsWhileWorking: null,
+    shortfallWhileWorking: null,
     bonusAboveCap: null,
     bonusIneligibleIncome: null,
     contributionAboveCap: null,
@@ -667,9 +731,10 @@ export function simulatePrepared(prep: PreparedPlan, opts: SimulateOptions): Sim
         spNetAtClaimToday = statePensionNet / P;
       }
     } else if (contributivo) {
-      // Revaluation (never below 1, DL 65/2015 art. 5) then this year's contributions.
+      // Revaluation (never below 1, DL 65/2015 art. 5) then this year's contributions, on the same base INPS is
+      // charged on: RAL + ordinary/productivity bonus (payroll.gross), up to the ceiling (L. 335/1995).
       montante *= Math.max(1, 1 + pi + prep.spGdp);
-      if (w) montante += (rules.inps.pensionAccrualRatePct / 100) * Math.min(w.ral, inpsCeiling(rules, P));
+      if (w) montante += (rules.inps.pensionAccrualRatePct / 100) * Math.min(w.payroll.gross, inpsCeiling(rules, P));
     }
 
     /* ── Living costs, events, cash (§5.5) ── */
@@ -792,7 +857,12 @@ export function simulatePrepared(prep: PreparedPlan, opts: SimulateOptions): Sim
       : companyTfr -
         Math.min(companyTfr, (tfrPrincipal * tfrSeparateTaxRatePct(tfrPrincipal, tfrYears, rules, irpefIndexFactor(rules, Pnext))) / 100);
     const accessibleNet = cash + portfolioValue - portfolioLatentTax;
-    const lockedNet = pensionFundNet + companyTfrNet;
+    // The share of the fund converted into an annuity stays locked wealth: the value of its remaining net payments.
+    const pensionAnnuityValue =
+      pfStage === PF_ANNUITY && annuityGross > 0
+        ? annuityGross * (1 - annuityTaxRate) * annuityValueFactor(prep.pfAnnuityDiscount, prep.lifeExpectancy - age)
+        : 0;
+    const lockedNet = pensionFundNet + companyTfrNet + pensionAnnuityValue;
     const netWorth = accessibleNet + lockedNet;
 
     if (record) {
@@ -805,6 +875,15 @@ export function simulatePrepared(prep: PreparedPlan, opts: SimulateOptions): Sim
       // Recurring budget only: a one-off event (car, house) or an inheritance does not trigger the warning.
       const recurringSavings = netSavings + eventsExpense - eventsInflow;
       if (recurringSavings < -0.005 && !signals.negativeSavingsWhileWorking) signals.negativeSavingsWhileWorking = { age };
+      if (shortfall > SIM_MODEL.shortfallThreshold && !signals.shortfallWhileWorking) {
+        let eventIndex = -1;
+        for (let i = 0; i < prep.events.length; i++) {
+          const ev = prep.events[i];
+          if (age < ev.age || age >= ev.age + ev.years || ev.amountToday <= 0) continue;
+          if (eventIndex < 0 || ev.amountToday > prep.events[eventIndex].amountToday) eventIndex = i;
+        }
+        signals.shortfallWhileWorking = { age, amountToday: shortfall / P, eventIndex: eventIndex < 0 ? null : eventIndex };
+      }
       if (w.bonusAboveCap && !signals.bonusAboveCap) signals.bonusAboveCap = { age, phaseIndex: w.phaseIndex, cap: w.bonusCap };
       if (w.bonusIneligible && !signals.bonusIneligibleIncome) signals.bonusIneligibleIncome = { age, phaseIndex: w.phaseIndex };
       if (w.contributionAboveCap && !signals.contributionAboveCap) signals.contributionAboveCap = { age, phaseIndex: w.phaseIndex };
@@ -871,6 +950,7 @@ export function simulatePrepared(prep: PreparedPlan, opts: SimulateOptions): Sim
       inpsMontante: montante,
       portfolioLatentTax,
       pensionFundNet,
+      pensionAnnuityValue,
       companyTfrNet,
       accessibleNet,
       lockedNet,

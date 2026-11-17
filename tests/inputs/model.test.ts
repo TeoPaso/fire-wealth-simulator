@@ -3,7 +3,7 @@
  * and portfolio templates / holdings layout. Nothing here sorts, clamps or drops user data.
  */
 import { describe, expect, it } from 'vitest';
-import { IT_2026, computePayroll, createDefaultPlan, phaseStartPayroll, type Plan } from '@/lib/engine';
+import { IT_2026, computePayroll, createDefaultPlan, phaseStartPayroll, validatePlan, type Plan } from '@/lib/engine';
 import {
   NEW_PHASE_YEARS,
   careerTimeline,
@@ -11,6 +11,7 @@ import {
   newPhase,
   phasePayPreview,
   phaseStartAge,
+  shiftCareerAges,
 } from '@/app/components/inputs/model/career';
 import {
   ASSET_TEMPLATES,
@@ -134,5 +135,28 @@ describe('holdings layout', () => {
     const ids = takenIds(plan());
     expect(ids.has('phase-1')).toBe(true);
     expect(ids.has('equity-global')).toBe(true);
+  });
+});
+
+describe('shiftCareerAges (UX-02: typing your own age into the example plan)', () => {
+  const career = createDefaultPlan().career; // ends at 35, 45, 67 for a 30-year-old
+
+  it('moves every phase by the age change, keeping the last phase (until the pension) when still valid', () => {
+    const shifted = shiftCareerAges(career, 8, 38);
+    expect(shifted.map((p) => p.untilAge)).toEqual([43, 53, 67]);
+    expect(career.map((p) => p.untilAge)).toEqual([35, 45, 67]); // input untouched
+    const plan = { ...createDefaultPlan(), profile: { ...createDefaultPlan().profile, currentAge: 38 }, career: shifted };
+    expect(validatePlan(plan).filter((i) => i.level === 'error' && i.path.startsWith('career'))).toEqual([]);
+  });
+
+  it('moves the last phase too when it would end before the previous one or the new age', () => {
+    expect(shiftCareerAges(career, 30, 60).map((p) => p.untilAge)).toEqual([65, 75, 97]);
+    expect(shiftCareerAges([{ ...career[0], untilAge: 35 }], 8, 38).map((p) => p.untilAge)).toEqual([43]);
+  });
+
+  it('a younger age moves the phases earlier; zero or invalid deltas change nothing', () => {
+    expect(shiftCareerAges(career, -5, 25).map((p) => p.untilAge)).toEqual([30, 40, 67]);
+    expect(shiftCareerAges(career, 0, 30).map((p) => p.untilAge)).toEqual([35, 45, 67]);
+    expect(shiftCareerAges(career, Number.NaN, 30).map((p) => p.untilAge)).toEqual([35, 45, 67]);
   });
 });

@@ -31,6 +31,8 @@ export const SERIES_COLORS = {
   expenses: '#3987e5',
   savings: '#0ca30c',
   withdrawals: '#199e70',
+  /** Spending not covered (money ran out): wealth-chart shading and the top of the retired-years columns. */
+  shortfall: '#d95926',
 } as const;
 
 export type SeriesName = keyof typeof SERIES_COLORS;

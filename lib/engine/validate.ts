@@ -55,6 +55,9 @@ export const ISSUE_CODES = [
   'claimBeforeOldAge', // {oldAgeAge, mode}
   'singleAssetConcentration', // one equity asset > 80% {max}
   'negativeSavingsWhileWorking', // post-run {age}
+  // post-run: accessible money runs out while still working (life events included), so no later retirement age can
+  // succeed {age, amount (today's €, rounded), event (label of the largest expense event of that year, when any)}
+  'shortfallWhileWorking',
   'bonusAboveCap', // post-run {age, cap}
   'bonusIneligibleIncome', // post-run {age, limit}
   'contributionAboveCap', // post-run {age, cap}

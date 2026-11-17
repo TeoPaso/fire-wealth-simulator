@@ -1,9 +1,10 @@
 'use client';
 
-import { useId, useState, type FocusEvent, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react';
 import { decimalSeparator, parseLocaleNumber, useI18n } from '@/lib/i18n';
 import { CONTROL_CLASS, FieldLabel, FieldMessages, controlBorder, hasError, type FieldBaseProps, type FieldIssue } from './Field';
 import { cn } from './cn';
+import { createIdleCommitter, type IdleCommitter } from './idleCommit';
 
 export interface NumberFieldProps extends FieldBaseProps {
   value: number;
@@ -42,7 +43,9 @@ function editCaret(formatted: string, caret: number, decimalSep: string, max: nu
 
 /**
  * Numeric input for today's-euro amounts, percentages, ages… Keeps a local draft string so users can type
- * "1," or "-" freely, accepts both "," and "." as decimal separator, and commits only valid numbers.
+ * "1," or "-" freely, accepts both "," and "." as decimal separator, and commits only valid numbers: when the user
+ * pauses typing (COMMIT_IDLE_MS), presses Enter or leaves the field, never on every keystroke (a partial number
+ * such as the "4" of "42000" would recompute, flip and save the whole plan).
  * Invalid or out-of-range drafts are NOT committed and never silently clamped: the field shows why and keeps the
  * text until it is fixed (Esc restores the value in use). Engine issues are passed via `issues`.
  */
@@ -137,8 +140,19 @@ export function NumberField({
     }
   };
 
+  // The idle committer outlives renders: it always calls the latest commitText (current value, min/max, onChange).
+  const commitRef = useRef(commitText);
+  useEffect(() => {
+    commitRef.current = commitText;
+  });
+  const idle = useRef<IdleCommitter<string> | null>(null);
+  idle.current ??= createIdleCommitter<string>((text) => commitRef.current(text));
+  // A value typed but not committed yet is not lost when the field unmounts (section closed, plan switched).
+  useEffect(() => () => void idle.current?.flush(), []);
+
   const onBlur = () => {
     setFocused(false);
+    idle.current?.cancel();
     if (draft === null) return;
     if (draft === editText) {
       setDraft(null);
@@ -160,8 +174,13 @@ export function NumberField({
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Escape' && draft !== null && draft !== editText) {
       event.preventDefault();
+      idle.current?.cancel();
       setDraft(editText);
       setShowIncomplete(false);
+      return;
+    }
+    if (event.key === 'Enter') {
+      idle.current?.flush();
       return;
     }
     if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && step !== undefined) {
@@ -173,6 +192,7 @@ export function NumberField({
       const next = Number((current.value + delta).toFixed(Math.min(10, precision)));
       setDraft(format.num(next, { decimals: 10, grouping: false }));
       setShowIncomplete(false);
+      idle.current?.cancel();
       if (check(next) === null && !Object.is(next, value)) onChange(next);
     }
   };
@@ -211,7 +231,7 @@ export function NumberField({
             onChange={(e) => {
               setDraft(e.target.value);
               setShowIncomplete(false);
-              commitText(e.target.value);
+              idle.current?.schedule(e.target.value);
             }}
             onKeyDown={onKeyDown}
             className={cn(CONTROL_CLASS, controlBorder(invalid), 'tabular text-right', inputClassName)}

@@ -36,6 +36,8 @@ export interface Formatters {
   num(value: number, opts?: NumOptions): string;
   /** Duration in years: "12 anni" / "12 years" (singular handled by the locale). */
   years(value: number, decimals?: number): string;
+  /** "35, 45 e 67" / "35, 45 and 67". */
+  list(items: readonly string[]): string;
 }
 
 const cache = new Map<string, Intl.NumberFormat>();
@@ -102,6 +104,7 @@ export function createFormatters(lang: Lang): Formatters {
       safe(value, (v) =>
         nf(locale, { style: 'unit', unit: 'year', unitDisplay: 'long', maximumFractionDigits: decimals }).format(v),
       ),
+    list: (items) => new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(items),
   };
 }
 

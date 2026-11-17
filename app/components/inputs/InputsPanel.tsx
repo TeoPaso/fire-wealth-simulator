@@ -5,7 +5,7 @@
  * and an issue badge. Validation issues come from validatePlan (usePlanValidation) and are shown next to the field
  * of their exact path; errors are also listed at the top with a link that opens the section and focuses the field.
  */
-import { useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react';
 import {
   Activity,
   BriefcaseBusiness,
@@ -26,6 +26,7 @@ import { useActivePlan, usePlanValidation } from '@/lib/store/hooks';
 import { PanelBoundary } from '../shell/PanelBoundary';
 import { Banner, FieldMessages, HelpTooltip, IconButton, Section } from '../ui';
 import { PlanEditorProvider, usePlanEditor } from './editor';
+import { ExampleIntro, PlanNotes } from './PlanIntro';
 import {
   SECTION_IDS,
   countIssuesBySection,
@@ -64,6 +65,16 @@ const SECTIONS: Record<SectionId, SectionDef> = {
   withdrawal: { icon: <Sunset />, Body: WithdrawalSection, Summary: WithdrawalSummary },
   market: { icon: <Activity />, Body: MarketSection, Summary: MarketSummary },
   taxRules: { icon: <Scale />, Body: TaxRulesSection, Summary: TaxRulesSummary },
+};
+
+/**
+ * Sections are grouped by how much they matter for a first estimate (UX-03): the essentials, the details, and the
+ * advanced assumptions most users should leave at their defaults. Value = group starting at that section.
+ */
+const SECTION_GROUP_START: Partial<Record<SectionId, 'essentials' | 'details' | 'advanced'>> = {
+  profile: 'essentials',
+  portfolio: 'details',
+  market: 'advanced',
 };
 
 /** DOM id of a section's content region (its toggle button is `<id>-button`). */
@@ -115,6 +126,7 @@ export function InputsPanel() {
 function InputsSections() {
   const { t } = useI18n();
   const { issues } = usePlanEditor();
+  const planId = useActivePlan().id;
   const [open, setOpen] = useState<OpenState>(loadOpen);
   const counts = useMemo(() => countIssuesBySection(issues), [issues]);
 
@@ -124,14 +136,14 @@ function InputsSections() {
   const allOpen = SECTION_IDS.every((id) => open[id]);
   const setAll = (value: boolean) => setOpen(Object.fromEntries(SECTION_IDS.map((id) => [id, value])) as OpenState);
 
-  /** Opens the section of an issue and moves focus to its field (or to the section header when it has none). */
-  const goTo = useCallback(
-    (issue: Issue) => {
-      const section = sectionOfPath(issue.path);
+  /** Opens the section of a path and moves focus to its field (or to the section header when it has none). */
+  const goToPath = useCallback(
+    (path: string) => {
+      const section = sectionOfPath(path);
       if (!section) return;
       setSection(section, true);
       requestAnimationFrame(() => {
-        const field = isFieldPath(issue.path) ? document.getElementById(fieldDomId(issue.path)) : null;
+        const field = isFieldPath(path) ? document.getElementById(fieldDomId(path)) : null;
         const usable = field && !(field as HTMLInputElement).disabled && field.offsetParent !== null ? field : null;
         const target = usable ?? document.getElementById(`${sectionDomId(section)}-button`);
         if (!target) return;
@@ -141,6 +153,7 @@ function InputsSections() {
     },
     [setSection],
   );
+  const goTo = useCallback((issue: Issue) => goToPath(issue.path), [goToPath]);
 
   return (
     <div className="space-y-3">
@@ -157,27 +170,37 @@ function InputsSections() {
         />
       </div>
 
+      <ExampleIntro onGoTo={goToPath} />
+      <PlanNotes />
       <IssueOverview onGoTo={goTo} />
 
       {SECTION_IDS.map((id) => {
         const def = SECTIONS[id];
         const c = counts.get(id) ?? emptyCounts();
+        const group = SECTION_GROUP_START[id];
         return (
-          <Section
-            key={id}
-            id={sectionDomId(id)}
-            icon={def.icon}
-            title={t(`inputs.section.${id}`)}
-            summary={<def.Summary />}
-            badge={<IssueBadge errors={c.error} warnings={c.warning} />}
-            open={open[id]}
-            onOpenChange={(v) => setSection(id, v)}
-          >
-            <SectionIssues id={id} />
-            <PanelBoundary>
-              <def.Body />
-            </PanelBoundary>
-          </Section>
+          <Fragment key={id}>
+            {group ? (
+              <p className="px-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                {t(`inputs.group.${group}`)}{' '}
+                <span className="ml-1 font-normal normal-case tracking-normal">· {t(`inputs.group.${group}Hint`)}</span>
+              </p>
+            ) : null}
+            <Section
+              id={sectionDomId(id)}
+              icon={def.icon}
+              title={t(`inputs.section.${id}`)}
+              summary={<def.Summary />}
+              badge={<IssueBadge errors={c.error} warnings={c.warning} />}
+              open={open[id]}
+              onOpenChange={(v) => setSection(id, v)}
+            >
+              <SectionIssues id={id} />
+              <PanelBoundary resetKey={planId}>
+                <def.Body />
+              </PanelBoundary>
+            </Section>
+          </Fragment>
         );
       })}
     </div>

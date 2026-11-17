@@ -2,10 +2,12 @@
 
 /**
  * Net worth by age as a stacked area: accessible (cash + portfolio net of latent tax) and locked (pension fund + TFR
- * net of exit taxes), with vertical lines at retirement, pension-fund access and state-pension claim.
+ * net of exit taxes), with vertical lines at retirement, pension-fund access and state-pension claim. Years whose
+ * spending is not covered are shaded (UX-07); the annuitised share of the fund is explained (UX-14); the accessible
+ * description uses the plotted value in the active unit (UX-16).
  */
 import { useMemo } from 'react';
-import { Area, AreaChart, CartesianGrid, ReferenceLine, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, CartesianGrid, ReferenceArea, ReferenceLine, Tooltip, XAxis, YAxis } from 'recharts';
 import { useI18n } from '@/lib/i18n';
 import { SERIES_COLORS } from '../../ui';
 import { ChartFrame, ChartLegend, isCompact, type LegendItem } from '../charts/ChartFrame';
@@ -13,15 +15,19 @@ import { TooltipBox, tooltipContent } from '../charts/ChartTooltip';
 import { DataTable } from '../charts/DataTable';
 import { MarkerLabel } from '../charts/shapes';
 import { AXIS_PROPS, CHART, ageStep, stepTicks } from '../charts/theme';
-import { ageMarkers, wealthSeries, type MarkerKind, type WealthPoint } from '../model/overview';
+import { ageMarkers, annuityAtAccess, shortfallRanges, wealthSeries, type MarkerKind, type WealthPoint } from '../model/overview';
 import { unitKey } from '../model/values';
 import type { TabProps } from '../types';
+
+const SHORTFALL_COLOR = SERIES_COLORS.shortfall;
 
 export function WealthChart({ data }: TabProps) {
   const { t, format } = useI18n();
   const { plan, result, mode } = data;
   const points = useMemo(() => wealthSeries(result, plan.profile.startYear, mode), [result, plan.profile.startYear, mode]);
   const markers = useMemo(() => ageMarkers(plan, result), [plan, result]);
+  const shortfalls = useMemo(() => shortfallRanges(result), [result]);
+  const annuity = annuityAtAccess(plan, result);
   const unit = t(unitKey(mode));
   const minAge = points[0]?.age ?? plan.profile.currentAge;
   const maxAge = points[points.length - 1]?.age ?? plan.profile.lifeExpectancy;
@@ -32,6 +38,9 @@ export function WealthChart({ data }: TabProps) {
   const legend: LegendItem[] = [
     { key: 'accessible', label: t('results.series.accessible'), color: SERIES_COLORS.accessible, shape: 'rect' },
     { key: 'locked', label: t('results.series.locked'), color: SERIES_COLORS.locked, shape: 'rect' },
+    ...(shortfalls.length > 0
+      ? [{ key: 'shortfall', label: t('results.wealth.shortfallLegend'), color: SHORTFALL_COLOR, shape: 'band' as const }]
+      : []),
   ];
 
   const Content = useMemo(
@@ -77,17 +86,22 @@ export function WealthChart({ data }: TabProps) {
   );
 
   const summary = result.summary;
+  // The value plotted at the retirement age, in the unit shown (today's € or nominal €).
+  const atRetirement = points.find((p) => p.age === summary.retirementAge)?.netWorth ?? NaN;
+  const ranges = (list: { from: number; to: number }[]) =>
+    format.list(list.map((r) => (r.to - r.from > 1 ? `${format.num(r.from)}–${format.num(r.to - 1)}` : format.num(r.from))));
   return (
     <ChartFrame
       title={t('results.wealth.title')}
       description={t('results.wealth.description')}
       unit={unit}
-      ariaLabel={t('results.wealth.aria', {
+      ariaLabel={`${t('results.wealth.aria', {
         from: format.num(minAge),
         to: format.num(maxAge),
-        atRetirement: format.eur(summary.netWorthAtRetirementToday),
+        atRetirement: format.eur(atRetirement),
         age: format.num(summary.retirementAge),
-      })}
+        unit,
+      })}${shortfalls.length > 0 ? ` ${t('results.wealth.ariaShortfall', { ages: ranges(shortfalls) })}` : ''}`}
       legend={legend}
       height={300}
       table={table}
@@ -104,6 +118,12 @@ export function WealthChart({ data }: TabProps) {
               }))}
             />
           ) : null}
+          {shortfalls.length > 0 ? (
+            <p className="mb-1 text-rose-200">{t('results.wealth.shortfallNote', { ages: ranges(shortfalls) })}</p>
+          ) : null}
+          {annuity ? (
+            <p className="mb-1">{t('results.wealth.annuityNote', { age: format.num(annuity.age), pct: format.pct(annuity.pct, 0) })}</p>
+          ) : null}
           <p>{t('results.wealth.footer')}</p>
         </>
       }
@@ -113,6 +133,9 @@ export function WealthChart({ data }: TabProps) {
         return (
           <AreaChart data={points} margin={{ top: 22, right: 8, bottom: 0, left: 0 }} title={t('results.wealth.title')}>
             <CartesianGrid stroke={CHART.grid} vertical={false} />
+            {shortfalls.map((r) => (
+              <ReferenceArea key={`sf-${r.from}`} x1={r.from} x2={Math.min(r.to, maxAge)} fill={SHORTFALL_COLOR} fillOpacity={0.16} stroke="none" />
+            ))}
             <XAxis
               {...AXIS_PROPS}
               dataKey="age"

@@ -1,11 +1,13 @@
 'use client';
 
 import { useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { Download, Menu as MenuIcon, RotateCcw, Upload } from 'lucide-react';
+import { ArchiveRestore, Download, Menu as MenuIcon, RotateCcw, Trash2, Upload } from 'lucide-react';
 import { hasErrors, validatePlan, type Plan } from '@/lib/engine';
 import { useI18n } from '@/lib/i18n';
 import { usePlanActions } from '@/lib/store/hooks';
-import type { ImportPreview } from '@/lib/store/store';
+import type { BackupInfo } from '@/lib/store/persistence';
+import { MAX_IMPORT_BYTES, type ImportPreview } from '@/lib/store/store';
+import { Button } from '../ui/Button';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { Menu } from '../ui/Menu';
 import { cn } from '../ui/cn';
@@ -18,28 +20,43 @@ interface PendingImport {
 
 const MESSAGE_TONE = { error: 'text-rose-300', warning: 'text-amber-200', info: 'text-sky-200' } as const;
 
-/** Application menu: export JSON, import JSON (preview → confirm, always adds), reset to examples (confirm). */
+const errorPreview = (key: string, params?: Record<string, string | number>): ImportPreview => ({
+  plans: [],
+  errors: [{ level: 'error', key, params }],
+});
+
+/**
+ * Application menu: export JSON, import JSON (preview → confirm, always adds), backups (restore as new plans,
+ * download, delete), reset to examples (confirm; refused without a backup unless the user chooses so).
+ */
 export function AppMenu() {
   const { t } = useI18n();
   const actions = usePlanActions();
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<PendingImport | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [resetBlocked, setResetBlocked] = useState(false);
+  const [backupsOpen, setBackupsOpen] = useState(false);
 
   const onFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget;
     const file = input.files?.[0];
     input.value = '';
     if (!file) return;
-    let text: string;
-    try {
-      text = await file.text();
-    } catch {
-      setPending({ fileName: file.name, preview: { plans: [], errors: [{ level: 'error', key: 'common.import.error.readFailed' }] } });
+    if (file.size > MAX_IMPORT_BYTES) {
+      setPending({ fileName: file.name, preview: errorPreview('common.import.error.tooLarge', { max: MAX_IMPORT_BYTES / 1024 / 1024 }) });
       return;
     }
-    setPending({ fileName: file.name, preview: actions.importJson(text) });
+    let preview: ImportPreview;
+    try {
+      preview = actions.importJson(await file.text());
+    } catch {
+      preview = errorPreview('common.import.error.readFailed');
+    }
+    setPending({ fileName: file.name, preview });
   };
+
+  const exportAll = () => downloadTextFile(exportFileName(), actions.exportJson());
 
   return (
     <>
@@ -48,13 +65,9 @@ export function AppMenu() {
         icon={<MenuIcon />}
         align="end"
         items={[
-          {
-            id: 'export',
-            label: t('common.menu.export'),
-            icon: <Download />,
-            onSelect: () => downloadTextFile(exportFileName(), actions.exportJson()),
-          },
+          { id: 'export', label: t('common.menu.export'), icon: <Download />, onSelect: exportAll },
           { id: 'import', label: t('common.menu.import'), icon: <Upload />, onSelect: () => fileRef.current?.click() },
+          { id: 'backups', label: t('common.menu.backups'), icon: <ArchiveRestore />, onSelect: () => setBackupsOpen(true) },
           { type: 'separator', id: 'sep' },
           {
             id: 'reset',
@@ -91,13 +104,120 @@ export function AppMenu() {
         confirmLabel={t('common.reset.confirm')}
         onCancel={() => setConfirmReset(false)}
         onConfirm={() => {
-          actions.resetToExamples();
+          const done = actions.resetToExamples();
           setConfirmReset(false);
+          if (!done) setResetBlocked(true);
         }}
       >
         <p>{t('common.reset.body')}</p>
       </ConfirmDialog>
+
+      <ConfirmDialog
+        open={resetBlocked}
+        tone="danger"
+        title={t('common.reset.title')}
+        confirmLabel={t('common.reset.forceConfirm')}
+        onCancel={() => setResetBlocked(false)}
+        onConfirm={() => {
+          actions.resetToExamples({ force: true });
+          setResetBlocked(false);
+        }}
+      >
+        <p>{t('common.reset.backupFailed')}</p>
+        <Button className="mt-3" size="sm" icon={<Download />} onClick={exportAll}>
+          {t('common.reset.exportFirst')}
+        </Button>
+      </ConfirmDialog>
+
+      <BackupsDialog
+        open={backupsOpen}
+        onClose={() => setBackupsOpen(false)}
+        onRestore={(backup, raw) => {
+          setBackupsOpen(false);
+          setPending({ fileName: backup.key, preview: actions.importJson(raw) });
+        }}
+      />
     </>
+  );
+}
+
+/** Backups written by the app (before a reset, or when saved data could not be read): restore, download, delete. */
+function BackupsDialog({
+  open,
+  onClose,
+  onRestore,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onRestore: (backup: BackupInfo, raw: string) => void;
+}) {
+  const { t, format, lang } = useI18n();
+  const actions = usePlanActions();
+  // Backups are not part of the planner state: they are read on every render of the open dialog, and a deletion
+  // bumps this counter to render again.
+  const [, setDeletions] = useState(0);
+  const backups = open ? actions.listBackups() : [];
+  const date = (iso: string) => {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(lang === 'it' ? 'it-IT' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+  };
+
+  return (
+    <ConfirmDialog open={open} title={t('common.backups.title')} hideConfirm cancelLabel={t('common.actions.close')} onCancel={onClose} onConfirm={onClose}>
+      <p>{t('common.backups.intro')}</p>
+      {backups.length === 0 ? (
+        <p className="mt-3 text-slate-400">{t('common.backups.empty')}</p>
+      ) : (
+        <ul className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+          {backups.map((b) => {
+            const raw = () => actions.readBackup(b.key);
+            return (
+              <li key={b.key} className="rounded-xl border border-slate-800 bg-slate-950/40 p-2.5">
+                <p className="text-slate-100">{date(b.createdAt)}</p>
+                <p className="text-xs text-slate-400">{t('common.backups.size', { size: format.num(Math.max(1, Math.round(b.size / 1024))) })}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    icon={<ArchiveRestore />}
+                    aria-label={t('common.backups.restoreFor', { date: date(b.createdAt) })}
+                    onClick={() => {
+                      const text = raw();
+                      if (text !== null) onRestore(b, text);
+                    }}
+                  >
+                    {t('common.backups.restore')}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon={<Download />}
+                    aria-label={t('common.backups.downloadFor', { date: date(b.createdAt) })}
+                    onClick={() => {
+                      const text = raw();
+                      if (text !== null) downloadTextFile(`${b.key.replace(/[^\w.-]+/g, '-')}.json`, text);
+                    }}
+                  >
+                    {t('common.backups.download')}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon={<Trash2 />}
+                    aria-label={t('common.backups.deleteFor', { date: date(b.createdAt) })}
+                    onClick={() => {
+                      actions.deleteBackup(b.key);
+                      setDeletions((v) => v + 1);
+                    }}
+                  >
+                    {t('common.backups.delete')}
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </ConfirmDialog>
   );
 }
 
@@ -109,7 +229,8 @@ function planNeedsFixes(plan: Plan): boolean {
   }
 }
 
-function ImportDialog({
+/** Preview of an import (exported for render tests). */
+export function ImportDialog({
   pending,
   onCancel,
   onConfirm,
@@ -140,7 +261,7 @@ function ImportDialog({
           <ul className="mt-3 max-h-48 space-y-1 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/40 p-2">
             {plans.map((p, i) => (
               <li key={`${p.id}-${i}`} className="flex items-center justify-between gap-3 px-1 py-0.5">
-                <span className="truncate text-slate-100">{p.name}</span>
+                <span className="truncate text-slate-100">{String(p.name)}</span>
                 {needsFixes[i] ? (
                   <span className="shrink-0 rounded-md bg-amber-400/10 px-1.5 py-0.5 text-xs text-amber-200">
                     {t('common.import.needsFixes')}

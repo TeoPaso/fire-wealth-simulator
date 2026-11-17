@@ -13,10 +13,10 @@ interface BoundaryState {
 }
 
 /**
- * Error boundary around each panel: a rendering bug in one panel must not blank the whole app, and the user can
- * always export their data.
+ * Error boundary around each panel (and the header): a rendering bug in one panel must not blank the whole app,
+ * and the user can always export their data. Pass `resetKey` (the active plan id) so that switching plans retries.
  */
-export class PanelBoundary extends Component<{ children: ReactNode }, BoundaryState> {
+export class PanelBoundary extends Component<{ children: ReactNode; resetKey?: unknown }, BoundaryState> {
   state: BoundaryState = { error: null };
 
   static getDerivedStateFromError(error: unknown): BoundaryState {
@@ -25,6 +25,11 @@ export class PanelBoundary extends Component<{ children: ReactNode }, BoundarySt
 
   componentDidCatch(error: unknown, info: ErrorInfo): void {
     console.error('[PanelBoundary]', error, info.componentStack);
+  }
+
+  /** A new `resetKey` (e.g. another active plan) clears the error, so a healthy plan is never shown as broken. */
+  componentDidUpdate(prev: { resetKey?: unknown }): void {
+    if (this.state.error && !Object.is(prev.resetKey, this.props.resetKey)) this.setState({ error: null });
   }
 
   render() {

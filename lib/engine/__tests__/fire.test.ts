@@ -81,6 +81,37 @@ describe('runPlan — modes and validation', () => {
     expect(r.summary.retirementAge).toBe(67);
     expect(r.summary.success).toBe(false);
     expect(r.issues.some((i) => i.code === 'negativeSavingsWhileWorking')).toBe(true);
+    // Without any event the cash gap while working points at the monthly spending.
+    expect(r.issues.find((i) => i.code === 'shortfallWhileWorking')).toMatchObject({ level: 'warning', path: 'spending.monthlyToday' });
+  });
+
+  it('a one-off expense larger than the accessible wealth while working is reported as a cash gap, not as "no FI age"', () => {
+    const plan = basePlan();
+    plan.spending.events = [
+      { id: 'car', label: 'Auto', age: 35, amountToday: 5000, years: 1 },
+      { id: 'house', label: 'Casa', age: 35, amountToday: 80000, years: 1 },
+    ];
+    const fits = runPlan(plan);
+    expect(fits.summary.fiAge).not.toBeNull();
+    expect(fits.issues.some((i) => i.code === 'shortfallWhileWorking')).toBe(false);
+
+    plan.spending.events[1].amountToday = 85000;
+    const r = runPlan(plan);
+    const gapYears = r.rows.filter((x) => x.shortfall > 0.5).map((x) => x.age);
+    expect(gapYears).toEqual([35]); // the only failing year, while still working
+    expect(r.summary.fiAge).toBeNull();
+    expect(r.summary.depletionAge).toBe(35);
+    expect(r.summary.retirementAge).toBeGreaterThan(35);
+    const row = rowAt(r.rows, 35);
+    expect(row.status).toBe('working');
+    expect(r.issues.find((i) => i.code === 'shortfallWhileWorking')).toEqual({
+      level: 'warning',
+      path: 'spending.events[1].amountToday', // the largest expense event of that year
+      code: 'shortfallWhileWorking',
+      params: { age: 35, amount: Math.round(row.shortfall / row.priceIndex), event: 'Casa' },
+    });
+    // The recurring budget is fine: the warning about the monthly budget stays silent.
+    expect(r.issues.some((i) => i.code === 'negativeSavingsWhileWorking')).toBe(false);
   });
 
   it('throws PlanValidationError with the issues when the plan has errors', () => {

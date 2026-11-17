@@ -48,6 +48,21 @@ function itemText(i18n: I18nValue, key: string, kind: 'item' | 'short'): string 
   return i18n.has(k) ? i18n.t(k) : i18n.t('results.sens.unknownItem', { key });
 }
 
+/** Size of the variation for the row label: "±1 p.p.", "±10%", or "−5 / +3 anni" when not symmetric (UX-17). */
+export function variationSpan(i18n: I18nValue, item: SensitivityItem): string {
+  const { lowValue, highValue, unit } = item;
+  if (lowValue === undefined || highValue === undefined || unit === undefined) return `${item.lowDelta} / ${item.highDelta}`;
+  if (Math.abs(lowValue + highValue) > 1e-9) return `${variationLabel(i18n, item, 'low')} / ${variationLabel(i18n, item, 'high')}`;
+  const size = Math.abs(highValue);
+  if (unit === 'pct') return `±${i18n.format.pct(size, 0)}`;
+  return `±${i18n.t(`results.sens.unit.${unit}`, { value: i18n.format.num(size, { decimals: 1 }) })}`;
+}
+
+/** Row label with the size of the variation, e.g. "Inflazione (±1 p.p.)". */
+function rowText(i18n: I18nValue, item: SensitivityItem, kind: 'item' | 'short'): string {
+  return i18n.t('results.sens.rowLabel', { name: itemText(i18n, item.key, kind), span: variationSpan(i18n, item) });
+}
+
 export function SensitivityTab({ data }: TabProps) {
   const i18n = useI18n();
   const { t, format } = i18n;
@@ -61,8 +76,8 @@ export function SensitivityTab({ data }: TabProps) {
     const delta = (age: number | null) => (age ?? never) - base;
     return items.map((item) => ({
       key: item.key,
-      label: itemText(i18n, item.key, 'item'),
-      short: itemText(i18n, item.key, 'short'),
+      label: rowText(i18n, item, 'item'),
+      short: rowText(i18n, item, 'short'),
       lowLabel: variationLabel(i18n, item, 'low'),
       highLabel: variationLabel(i18n, item, 'high'),
       fiAgeLow: item.fiAgeLow,
@@ -115,7 +130,7 @@ export function SensitivityTab({ data }: TabProps) {
       rows={items.map((item) => ({
         key: item.key,
         cells: {
-          item: itemText(i18n, item.key, 'item'),
+          item: rowText(i18n, item, 'item'),
           low: variationLabel(i18n, item, 'low'),
           lowAge: ageWithDelta(item.fiAgeLow),
           high: variationLabel(i18n, item, 'high'),
@@ -160,7 +175,12 @@ export function SensitivityTab({ data }: TabProps) {
         height={Math.max(240, rows.length * 44 + 40)}
         stale={analysis.stale}
         table={table}
-        footer={<p>{t('results.sens.footer')}</p>}
+        footer={
+          <>
+            <p>{t('results.sens.footer')}</p>
+            {items.some((i) => i.key === 'inflation') ? <p className="mt-1">{t('results.sens.inflationNote')}</p> : null}
+          </>
+        }
       >
         {(width) => {
           const compact = isCompact(width);

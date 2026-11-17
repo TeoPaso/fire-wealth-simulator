@@ -49,13 +49,26 @@ const it = {
   'results.headline.notReachable': 'Con queste ipotesi non raggiungi l’indipendenza finanziaria entro i {age} anni',
   'results.headline.notReachableHint':
     'Prova a ridurre le spese, aumentare il risparmio o rivedere le ipotesi di rendimento nel pannello Dati.',
-  'results.headline.fixedAge': 'Il piano mostrato usa l’età di ritiro che hai scelto: {age} anni.',
   'results.headline.fallbackAge': 'Il piano mostrato smette di lavorare all’età della pensione INPS: {age} anni.',
-  'results.headline.confidentLabel': 'Con il {target} di probabilità',
   'results.headline.confidentHelp':
     'Prima età di ritiro per cui almeno questa quota delle {runs} simulazioni Monte Carlo non resta mai senza soldi accessibili.',
-  'results.headline.confidentSub': 'età di ritiro secondo il Monte Carlo',
   'results.headline.confidentNone': 'nessuna età fino a {age} anni',
+  'results.headline.confidentHero': 'con il {target} di probabilità',
+  'results.headline.medianCaption': 'nello scenario medio',
+  'results.headline.medianHelp': 'Età calcolata con i rendimenti e l’inflazione attesi, senza oscillazioni dei mercati: è uno scenario medio, non una garanzia. L’età accanto tiene conto delle oscillazioni (simulazioni Monte Carlo).',
+  'results.headline.verdict.good': 'Smettendo a {age} anni il piano riesce nel {pct} delle simulazioni Monte Carlo e raggiunge il tuo obiettivo del {target}.',
+  'results.headline.verdict.near': 'Smettendo a {age} anni il piano riesce nel {pct} delle simulazioni Monte Carlo: poco sotto il tuo obiettivo del {target}.',
+  'results.headline.verdict.bad': 'Attenzione: smettendo a {age} anni il piano riesce solo nel {pct} delle simulazioni Monte Carlo, molto sotto il tuo obiettivo del {target}: negli altri scenari i soldi accessibili finiscono prima della fine del piano.',
+  'results.headline.verdictLater': 'Per raggiungere l’obiettivo smetti a {age} anni.',
+  'results.headline.verdictNone': 'Nessuna età fino a {age} anni raggiunge l’obiettivo.',
+  'results.headline.chartsAtAge': 'Grafici e tabelle mostrano il ritiro a {age} anni: per vedere un’altra età scegli “Età fissa” in Ritiro e prelievi.',
+  'results.headline.successAbove': 'obiettivo del {target} raggiunto',
+  'results.headline.successBelow': 'sotto l’obiettivo del {target}',
+  'results.headline.fixedLead': 'Smettendo a {age} anni (l’età che hai scelto)',
+  'results.headline.fixedDepletes': 'i soldi accessibili finiscono a {age} anni',
+  'results.headline.fixedLasts': 'il patrimonio accessibile basta fino ai {age} anni',
+  'results.headline.fixedAuto': 'L’età minima calcolata, nello scenario medio, è',
+  'results.headline.fixedConfident': 'con il {target} di probabilità: {age} anni',
   'results.headline.successLabel': 'Probabilità di successo smettendo a {age} anni',
   'results.headline.successHelp':
     'Quota delle simulazioni Monte Carlo (rendimenti e inflazione casuali) in cui il patrimonio accessibile copre le spese fino alla fine del piano.',
@@ -85,12 +98,23 @@ const it = {
 
   'results.wealth.title': 'Patrimonio per età',
   'results.wealth.description': 'Patrimonio accessibile e vincolato all’inizio di ogni età, scenario deterministico.',
-  'results.wealth.aria':
-    'Grafico ad aree del patrimonio netto dai {from} ai {to} anni, diviso in accessibile e vincolato. Al ritiro, a {age} anni, il patrimonio netto è {atRetirement}.',
+  'results.wealth.aria': 'Grafico ad aree del patrimonio netto dai {from} ai {to} anni, diviso in accessibile e vincolato. Al ritiro, a {age} anni, il patrimonio netto è {atRetirement} ({unit}).',
   'results.wealth.footer':
     'Accessibile = liquidità + investimenti al netto delle imposte sulle plusvalenze latenti. Vincolato = fondo pensione e TFR in azienda al netto delle imposte di uscita: non si possono usare prima dello sblocco.',
+  'results.wealth.shortfallLegend': 'Spese non coperte',
+  'results.wealth.ariaShortfall': 'Spese non coperte a {ages} anni.',
+  'results.wealth.shortfallNote': 'Le zone evidenziate come «Spese non coperte» sono gli anni in cui i soldi accessibili sono finiti e le entrate non coprono le spese ({ages} anni). Il dettaglio è in Flussi e in Anno per anno.',
+  'results.wealth.annuityNote': 'A {age} anni il {pct} del fondo pensione diventa una rendita a vita: da lì non conta più come patrimonio ma come entrata annua (vedi Flussi). Per questo il patrimonio scende.',
 
   'results.fan.title': 'Monte Carlo: patrimonio netto',
+  'results.fan.titleAccessible': 'Monte Carlo: patrimonio accessibile',
+  'results.fan.measure': 'Cosa mostrare',
+  'results.fan.measureAccessible': 'Accessibile',
+  'results.fan.measureNetWorth': 'Patrimonio netto',
+  'results.fan.accessibleNote': 'Il successo si misura sul patrimonio accessibile: negli scenari peggiori scende a 0 € prima che fondo pensione e TFR si sblocchino.',
+  'results.fan.netWorthNote': 'Il patrimonio netto comprende fondo pensione e TFR, che non puoi spendere prima dello sblocco: il successo si misura invece sul patrimonio accessibile.',
+  'results.fan.bridge': 'Ponte dai {from} ai {to} anni: vivi solo del patrimonio accessibile',
+  'results.fan.ariaAccessible': 'Grafico a ventaglio del patrimonio accessibile in {runs} simulazioni con ritiro a {age} anni: mediana al ritiro {median}; a {endAge} anni tra {endP10} (10° percentile) e {endP90} (90° percentile), mediana {endP50}.',
   'results.fan.description': '{runs} simulazioni con rendimenti e inflazione casuali, ritiro a {age} anni.',
   'results.fan.aria':
     'Grafico a ventaglio del patrimonio netto in {runs} simulazioni con ritiro a {age} anni: mediana al ritiro {median}; a {endAge} anni tra {endP10} (10° percentile) e {endP90} (90° percentile), mediana {endP50}.',
@@ -139,11 +163,12 @@ const it = {
   'results.insight.locked':
     'Quando smetti di lavorare il {pct} del patrimonio netto è vincolato in fondo pensione e TFR ({locked} su {total}, € di oggi).',
   'results.insight.savingsRate': 'Negli anni di lavoro risparmi in media il {pct} dello stipendio netto.',
+  'results.insight.savingsNegative': 'Negli anni di lavoro spendi in media il {pct} in più di quanto guadagni (stipendio netto): la differenza esce dai risparmi.',
   'results.insight.statePension': 'Pensione INPS netta stimata: {amount} all’anno (€ di oggi) dai {age} anni.',
   'results.insight.mcFailures':
     'Smettendo a {retirementAge} anni, nel {pct} delle simulazioni il patrimonio accessibile finisce prima del termine, in mediana a {age} anni.',
 
-  'results.flows.series.expenses': 'Spese',
+  'results.flows.series.expenses': 'Spese, eventi e bollo',
   'results.flows.series.savings': 'Risparmio',
   'results.flows.series.incomeTax': 'IRPEF e addizionali',
   'results.flows.series.inps': 'Contributi INPS',
@@ -151,7 +176,8 @@ const it = {
   'results.flows.series.pensionFund': 'Fondo pensione e TFR (netti)',
   'results.flows.series.withdrawals': 'Prelievi dai risparmi (netti)',
   'results.flows.series.taxes': 'Imposte',
-  'results.flows.series.spending': 'Spese dell’anno',
+  'results.flows.series.spending': 'Spese dell’anno (con eventi e bollo)',
+  'results.flows.series.shortfall': 'Spese non coperte (mancano)',
   'results.flows.working.title': 'Anni di lavoro: dove va lo stipendio',
   'results.flows.working.description':
     'Sopra lo zero ciò che resta a te (spese e risparmio), sotto lo zero ciò che viene trattenuto (imposte e contributi).',
@@ -166,6 +192,7 @@ const it = {
     'Grafico a colonne degli anni senza lavoro dai {from} ai {to} anni: pensione INPS, fondo pensione e TFR, prelievi dai risparmi e imposte, con la linea delle spese.',
   'results.flows.retired.footer':
     'Imposte = IRPEF sulla pensione INPS, imposte sulle plusvalenze dei prelievi, tassazione di uscita del fondo e del TFR. Se le colonne superano la linea, l’eccedenza viene reinvestita.',
+  'results.flows.retired.shortfallNote': '«Spese non coperte»: la parte delle spese che nessuna fonte copre, perché in quegli anni i soldi accessibili sono finiti.',
 
   'results.payroll.title': 'Busta paga dell’anno',
   'results.payroll.description': 'Dal lordo al netto, voce per voce, come calcolato dal motore con le regole fiscali del piano.',
@@ -173,7 +200,7 @@ const it = {
   'results.payroll.yearOption': '{age} anni · {year}',
   'results.payroll.none': 'In questo piano non ci sono anni di lavoro da mostrare.',
   'results.payroll.netAnnual': 'Netto annuo in busta paga',
-  'results.payroll.netMonthly': '{amount} al mese in media su {n} mensilità (premio incluso)',
+  'results.payroll.netMonthly': 'Media mensile con il premio: {amount} su {n} mensilità (non è il netto mensile in busta, che esclude il premio)',
   'results.payroll.noMensilita': 'Numero di mensilità non valido: netto mensile non disponibile.',
   'results.payroll.rates': 'Aliquota marginale {marginal} · aliquota media {average} (IRPEF e addizionali sul lordo)',
   'results.payroll.block.net': 'Dal lordo al netto',
@@ -281,8 +308,10 @@ const it = {
   'results.sens.noBase':
     'Con le ipotesi attuali l’indipendenza finanziaria non si raggiunge entro i {age} anni: ecco l’età FIRE con ciascuna variazione.',
   'results.sens.unknownItem': 'Ipotesi «{key}»',
-  'results.sens.unit.pp': '{value} punti',
+  'results.sens.unit.pp': '{value} p.p.',
   'results.sens.unit.years': '{value} anni',
+  'results.sens.rowLabel': '{name} ({span})',
+  'results.sens.inflationNote': 'Perché l’inflazione pesa tanto: i rendimenti che inserisci sono nominali e restano fermi quando l’inflazione cambia (quindi più inflazione = rendimenti reali più bassi), e gli scaglioni IRPEF non sono indicizzati (più inflazione = più tasse in termini reali).',
   'results.sens.item.returns': 'Rendimenti attesi (investimenti e fondo)',
   'results.sens.item.inflation': 'Inflazione',
   'results.sens.item.spending': 'Spese mensili',
@@ -435,13 +464,26 @@ const en: Record<keyof typeof it, string> = {
   'results.headline.notReachable': 'With these assumptions you do not reach financial independence by age {age}',
   'results.headline.notReachableHint':
     'Try lowering spending, saving more or reviewing the return assumptions in the Data panel.',
-  'results.headline.fixedAge': 'The plan shown uses the retirement age you chose: {age}.',
   'results.headline.fallbackAge': 'The plan shown stops working at the state-pension age: {age}.',
-  'results.headline.confidentLabel': 'With {target} probability',
   'results.headline.confidentHelp':
     'Earliest retirement age at which at least this share of the {runs} Monte Carlo simulations never runs out of accessible money.',
-  'results.headline.confidentSub': 'retirement age according to Monte Carlo',
   'results.headline.confidentNone': 'no age up to {age}',
+  'results.headline.confidentHero': 'with {target} probability',
+  'results.headline.medianCaption': 'in the average scenario',
+  'results.headline.medianHelp': 'Age computed with the expected returns and inflation, without market swings: an average scenario, not a guarantee. The age next to it accounts for the swings (Monte Carlo simulations).',
+  'results.headline.verdict.good': 'Stopping at {age}, the plan succeeds in {pct} of the Monte Carlo simulations and meets your {target} target.',
+  'results.headline.verdict.near': 'Stopping at {age}, the plan succeeds in {pct} of the Monte Carlo simulations: just below your {target} target.',
+  'results.headline.verdict.bad': 'Warning: stopping at {age}, the plan succeeds in only {pct} of the Monte Carlo simulations, well below your {target} target: in the other scenarios your accessible money runs out before the end of the plan.',
+  'results.headline.verdictLater': 'To meet the target, stop at {age}.',
+  'results.headline.verdictNone': 'No age up to {age} meets the target.',
+  'results.headline.chartsAtAge': 'Charts and tables show retirement at {age}: to see another age, choose “Fixed age” in Retirement and withdrawals.',
+  'results.headline.successAbove': '{target} target met',
+  'results.headline.successBelow': 'below the {target} target',
+  'results.headline.fixedLead': 'Stopping at {age} (the age you chose)',
+  'results.headline.fixedDepletes': 'your accessible money runs out at {age}',
+  'results.headline.fixedLasts': 'your accessible wealth lasts until {age}',
+  'results.headline.fixedAuto': 'The earliest age computed, in the average scenario, is',
+  'results.headline.fixedConfident': 'with {target} probability: {age}',
   'results.headline.successLabel': 'Probability of success stopping at {age}',
   'results.headline.successHelp':
     'Share of the Monte Carlo simulations (random returns and inflation) in which accessible wealth covers spending until the end of the plan.',
@@ -470,12 +512,23 @@ const en: Record<keyof typeof it, string> = {
 
   'results.wealth.title': 'Wealth by age',
   'results.wealth.description': 'Accessible and locked wealth at the start of each age, deterministic scenario.',
-  'results.wealth.aria':
-    'Area chart of net worth from age {from} to {to}, split into accessible and locked. At retirement, age {age}, net worth is {atRetirement}.',
+  'results.wealth.aria': 'Area chart of net worth from age {from} to {to}, split into accessible and locked. At retirement, at {age}, net worth is {atRetirement} ({unit}).',
   'results.wealth.footer':
     'Accessible = cash + investments net of the tax on unrealised gains. Locked = pension fund and TFR held by the employer, net of exit taxes: they cannot be used before they unlock.',
+  'results.wealth.shortfallLegend': 'Spending not covered',
+  'results.wealth.ariaShortfall': 'Spending not covered at age {ages}.',
+  'results.wealth.shortfallNote': 'The areas marked “Spending not covered” are the years in which accessible money has run out and income does not cover spending (age {ages}). See Flows and Year by year for the details.',
+  'results.wealth.annuityNote': 'At {age}, {pct} of the pension fund becomes a lifetime annuity: from then on it counts as yearly income, not wealth (see Flows). That is why wealth drops.',
 
   'results.fan.title': 'Monte Carlo: net worth',
+  'results.fan.titleAccessible': 'Monte Carlo: accessible wealth',
+  'results.fan.measure': 'What to show',
+  'results.fan.measureAccessible': 'Accessible',
+  'results.fan.measureNetWorth': 'Net worth',
+  'results.fan.accessibleNote': 'Success is measured on accessible wealth: in the worst scenarios it falls to 0 € before the pension fund and TFR unlock.',
+  'results.fan.netWorthNote': 'Net worth includes the pension fund and TFR, which you cannot spend before they unlock: success is measured on accessible wealth instead.',
+  'results.fan.bridge': 'Bridge from {from} to {to}: you live on accessible wealth only',
+  'results.fan.ariaAccessible': 'Fan chart of accessible wealth in {runs} simulations retiring at {age}: median at retirement {median}; at {endAge} between {endP10} (10th percentile) and {endP90} (90th percentile), median {endP50}.',
   'results.fan.description': '{runs} simulations with random returns and inflation, retiring at {age}.',
   'results.fan.aria':
     'Fan chart of net worth in {runs} simulations retiring at {age}: median at retirement {median}; at age {endAge} between {endP10} (10th percentile) and {endP90} (90th percentile), median {endP50}.',
@@ -523,11 +576,12 @@ const en: Record<keyof typeof it, string> = {
   'results.insight.locked':
     'When you stop working, {pct} of your net worth is locked in the pension fund and TFR ({locked} of {total}, today’s €).',
   'results.insight.savingsRate': 'Over your working years you save {pct} of your take-home pay on average.',
+  'results.insight.savingsNegative': 'Over your working years you spend on average {pct} more than your take-home pay: the difference comes out of your savings.',
   'results.insight.statePension': 'Estimated net state pension: {amount} a year (today’s €) from age {age}.',
   'results.insight.mcFailures':
     'Retiring at {retirementAge}, in {pct} of the simulations accessible wealth runs out before the end, at a median age of {age}.',
 
-  'results.flows.series.expenses': 'Spending',
+  'results.flows.series.expenses': 'Spending, events and stamp duty',
   'results.flows.series.savings': 'Savings',
   'results.flows.series.incomeTax': 'IRPEF and surcharges',
   'results.flows.series.inps': 'INPS contributions',
@@ -535,7 +589,8 @@ const en: Record<keyof typeof it, string> = {
   'results.flows.series.pensionFund': 'Pension fund and TFR (net)',
   'results.flows.series.withdrawals': 'Withdrawals from savings (net)',
   'results.flows.series.taxes': 'Taxes',
-  'results.flows.series.spending': 'Spending of the year',
+  'results.flows.series.spending': 'Spending of the year (with events and stamp duty)',
+  'results.flows.series.shortfall': 'Spending not covered (missing)',
   'results.flows.working.title': 'Working years: where your pay goes',
   'results.flows.working.description':
     'Above zero what stays with you (spending and savings), below zero what is withheld (taxes and contributions).',
@@ -550,6 +605,7 @@ const en: Record<keyof typeof it, string> = {
     'Column chart of the years without work from age {from} to {to}: state pension, pension fund and TFR, withdrawals from savings and taxes, with the spending line.',
   'results.flows.retired.footer':
     'Taxes = IRPEF on the state pension, tax on the gains of the withdrawals, exit taxes of the fund and the TFR. When the columns exceed the line, the surplus is reinvested.',
+  'results.flows.retired.shortfallNote': '“Spending not covered”: the part of the spending no source covers, because in those years the accessible money has run out.',
 
   'results.payroll.title': 'Payslip of the year',
   'results.payroll.description': 'From gross to net, line by line, as computed by the engine with the plan’s tax rules.',
@@ -557,7 +613,7 @@ const en: Record<keyof typeof it, string> = {
   'results.payroll.yearOption': 'Age {age} · {year}',
   'results.payroll.none': 'This plan has no working years to show.',
   'results.payroll.netAnnual': 'Yearly take-home pay',
-  'results.payroll.netMonthly': '{amount} a month on average over {n} payments (bonus included)',
+  'results.payroll.netMonthly': 'Monthly average including the bonus: {amount} over {n} payments (not the monthly take-home pay, which excludes the bonus)',
   'results.payroll.noMensilita': 'Invalid number of monthly payments: monthly net not available.',
   'results.payroll.rates': 'Marginal rate {marginal} · average rate {average} (IRPEF and surcharges on gross)',
   'results.payroll.block.net': 'From gross to net',
@@ -665,8 +721,10 @@ const en: Record<keyof typeof it, string> = {
   'results.sens.noBase':
     'With the current assumptions financial independence is not reached by age {age}: here is the FIRE age with each variation.',
   'results.sens.unknownItem': 'Assumption “{key}”',
-  'results.sens.unit.pp': '{value} points',
+  'results.sens.unit.pp': '{value} pp',
   'results.sens.unit.years': '{value} years',
+  'results.sens.rowLabel': '{name} ({span})',
+  'results.sens.inflationNote': 'Why inflation matters so much: the returns you enter are nominal and stay put when inflation changes (so more inflation = lower real returns), and the IRPEF brackets are not indexed (more inflation = more tax in real terms).',
   'results.sens.item.returns': 'Expected returns (investments and fund)',
   'results.sens.item.inflation': 'Inflation',
   'results.sens.item.spending': 'Monthly spending',

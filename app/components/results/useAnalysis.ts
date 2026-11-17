@@ -3,14 +3,17 @@
 /**
  * Monte Carlo + sensitivity for the active plan, computed in a Web Worker (docs/SPEC.md §7):
  * - debounced (ANALYSIS_DEBOUNCE_MS) after every plan change;
- * - every request has an id; answers to older requests are ignored (the plan changed meanwhile);
+ * - every request has an id; answers to older requests are ignored (the plan changed meanwhile), and the job in
+ *   flight is cancelled when a newer request arrives or the plan becomes invalid (analysisRunner);
+ * - a hidden (background) tab does not analyse; it catches up when it becomes visible;
  * - falls back to the main thread when Worker is unavailable or the worker fails to load;
  * - while a new result is computed, the previous one stays available and is flagged `stale` (same plan) so the
  *   charts keep their frame instead of flashing a skeleton.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { Plan } from '@/lib/engine';
 import { analyzePlan, type AnalysisError, type AnalysisRequest, type AnalysisResponse, type AnalysisResult } from '../../workers/analysis';
+import { createAnalysisRunner, type AnalysisRunner, type WorkerLike } from './analysisRunner';
 
 export const ANALYSIS_DEBOUNCE_MS = 400;
 
@@ -45,28 +48,37 @@ export interface AnalysisView extends AnalysisState {
   available: boolean;
 }
 
-type WorkerSlot = { worker: Worker | null; broken: boolean };
-
-function createWorker(): Worker | null {
+function createWorker(): WorkerLike | null {
   if (typeof Worker === 'undefined') return null;
   try {
-    return new Worker(new URL('../../workers/analysis.worker.ts', import.meta.url));
+    return new Worker(new URL('../../workers/analysis.worker.ts', import.meta.url)) as unknown as WorkerLike;
   } catch {
     return null;
   }
 }
 
+function subscribeVisibility(onChange: () => void): () => void {
+  document.addEventListener('visibilitychange', onChange);
+  return () => document.removeEventListener('visibilitychange', onChange);
+}
+const isVisible = () => document.visibilityState !== 'hidden';
+const alwaysVisible = () => true;
+
 /** Runs the analysis of `plan` (only when `enabled`, i.e. the plan has no validation errors). */
 export function useAnalysis(plan: Plan, enabled: boolean): AnalysisView {
   const [state, setState] = useState<AnalysisState>({ plan: null, result: null, error: null, engine: null });
   const gate = useRef(createRequestGate());
-  const slot = useRef<WorkerSlot>({ worker: null, broken: false });
+  const runner = useRef<AnalysisRunner | null>(null);
   const pending = useRef<AnalysisRequest | null>(null);
+  const statePlan = useRef<Plan | null>(null);
+  // A background tab (hidden) does not analyse: it catches up when it becomes visible again (ROB-12).
+  const visible = useSyncExternalStore(subscribeVisibility, isVisible, alwaysVisible);
 
   const accept = (response: AnalysisResponse, engine: 'worker' | 'main') => {
     const request = pending.current;
     if (!gate.current.isLatest(response.id) || !request || request.id !== response.id) return;
     pending.current = null;
+    statePlan.current = request.plan;
     setState(
       response.ok
         ? {
@@ -83,58 +95,41 @@ export function useAnalysis(plan: Plan, enabled: boolean): AnalysisView {
     acceptRef.current = accept;
   });
 
-  const runOnMainThread = (request: AnalysisRequest) => {
-    // Yield first so the "calcolo in corso" indicator can paint before the main thread is busy.
-    window.setTimeout(() => {
-      if (gate.current.isLatest(request.id)) acceptRef.current(analyzePlan(request), 'main');
-    }, 30);
-  };
-  const runOnMainThreadRef = useRef(runOnMainThread);
-
-  // One worker per mounted panel.
+  // One runner (and worker) per mounted panel.
   useEffect(() => {
-    const current: WorkerSlot = { worker: createWorker(), broken: false };
-    slot.current = current;
-    const worker = current.worker;
-    if (worker) {
-      worker.onmessage = (event: MessageEvent<AnalysisResponse>) => acceptRef.current(event.data, 'worker');
-      worker.onerror = (event) => {
-        // The worker could not load or crashed: switch to the main thread and redo the pending request.
-        event.preventDefault();
-        current.broken = true;
-        worker.terminate();
-        if (pending.current) runOnMainThreadRef.current(pending.current);
-      };
-    }
+    const current = createAnalysisRunner({
+      createWorker,
+      onResponse: (response, engine) => acceptRef.current(response, engine),
+      runOnMainThread: (request) => {
+        // Yield first so the "calcolo in corso" indicator can paint before the main thread is busy.
+        window.setTimeout(() => {
+          if (gate.current.isLatest(request.id)) acceptRef.current(analyzePlan(request), 'main');
+        }, 30);
+      },
+    });
+    runner.current = current;
     return () => {
-      worker?.terminate();
-      current.worker = null;
+      current.dispose();
+      if (runner.current === current) runner.current = null;
     };
   }, []);
 
   useEffect(() => {
     if (!enabled) {
+      // The plan became invalid: drop pending answers and stop the job in flight (no wasted CPU / battery).
       gate.current.cancel();
       pending.current = null;
+      runner.current?.cancel();
       return;
     }
+    if (!visible || statePlan.current === plan) return;
     const timer = window.setTimeout(() => {
       const request: AnalysisRequest = { id: gate.current.next(), plan };
       pending.current = request;
-      const { worker, broken } = slot.current;
-      if (worker && !broken) {
-        try {
-          worker.postMessage(request);
-          return;
-        } catch {
-          slot.current.broken = true;
-        }
-      }
-      runOnMainThreadRef.current(request);
+      runner.current?.run(request);
     }, ANALYSIS_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [plan, enabled]);
-
+  }, [plan, enabled, visible]);
   const samePlanId = state.plan !== null && state.plan.id === plan.id;
   return {
     ...state,

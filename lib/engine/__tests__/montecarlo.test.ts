@@ -96,8 +96,9 @@ describe('market paths', () => {
     const median = (xs: number[]) => percentileSorted(Float64Array.from(xs).sort(), 50);
     expect(median(equity)).toBeCloseTo(0.06, 2);
     expect(median(bond)).toBeCloseTo(0.03, 2);
-    expect(Math.min(...inflation)).toBeGreaterThanOrEqual(-0.03);
-    expect(Math.max(...inflation)).toBeLessThanOrEqual(0.15);
+    // Inflation N(2%, 1%) clipped symmetrically at ± 3 σ.
+    expect(Math.min(...inflation)).toBeGreaterThanOrEqual(0.02 - 0.03 - 1e-12);
+    expect(Math.max(...inflation)).toBeLessThanOrEqual(0.02 + 0.03 + 1e-12);
     const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
     const le = equity.map((x) => Math.log(1 + x));
     const lb = bond.map((x) => Math.log(1 + x));
@@ -114,6 +115,28 @@ describe('market paths', () => {
     expect(cov / Math.sqrt(ve * vb)).toBeCloseTo(0.2, 1);
     // Same (seed, run) → same path.
     expect(createPathGenerator(plan, 60, 99)(7)).toEqual(gen(7));
+  });
+
+  it('simulated inflation keeps the plan mean for any valid input (the clip is symmetric), like the deterministic path', () => {
+    const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
+    for (const [pct, vol] of [
+      [2, 5], // an asymmetric [−3%, 15%] clip moved this mean to ≈ 2.34%
+      [20, 1], // and capped these at 15% / −3%
+      [-4, 1],
+      [30, 20],
+    ]) {
+      const plan = basePlan();
+      plan.market.inflationPct = pct;
+      plan.market.inflationVolatilityPct = vol;
+      const gen = createPathGenerator(plan, 60, 5);
+      const xs: number[] = [];
+      for (let r = 0; r < 300; r++) xs.push(...gen(r).inflation);
+      const se = vol / 100 / Math.sqrt(xs.length);
+      expect(Math.abs(mean(xs) - pct / 100), `${pct}% ± ${vol}%`).toBeLessThan(4 * se + 1e-12);
+      expect(Math.min(...xs)).toBeGreaterThan(-1);
+      expect(Math.min(...xs)).toBeGreaterThanOrEqual(pct / 100 - (3 * vol) / 100 - 1e-12);
+      expect(Math.max(...xs)).toBeLessThanOrEqual(pct / 100 + (3 * vol) / 100 + 1e-12);
+    }
   });
 });
 

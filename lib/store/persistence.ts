@@ -4,10 +4,13 @@
  * Guarantees:
  * - user data is never discarded: anything unreadable is copied to `fire-planner:backup:<iso>` before the app
  *   starts from the example plans, and if that copy cannot be written the session becomes read-only;
- * - every stored plan is deep-merged over `createDefaultPlan()` and kept even when invalid;
+ * - every stored plan is deep-merged over `createDefaultPlan()` and kept even when invalid; values of a type the UI
+ *   cannot show (an object as a plan name…) are converted, after the original data has been backed up;
+ * - at most MAX_BACKUPS backups are kept (the oldest is removed before a new one is written);
  * - the legacy v1 key is read (best-effort migration) but never modified.
  */
 import { createExamplePlans, migrateV1State, type Plan } from '@/lib/engine';
+import { V1_ASSUMED_AGE } from '@/lib/engine/migrate-v1';
 import { isLang } from '@/lib/i18n/core';
 import {
   STATE_VERSION,
@@ -17,14 +20,20 @@ import {
   type PlannerState,
   type UiPrefs,
 } from './state';
-import { isPlainObject, normalizePlan, uniqueId, type IdFactory, randomId } from './plans';
+import { isPlainObject, normalizePlan, uniqueId, type IdFactory, type MergeReport, randomId } from './plans';
 
 export const STORAGE_KEY = 'fire-planner:v2';
 export const LEGACY_V1_KEY = 'fire_wealth_simulator_v1';
 export const BACKUP_KEY_PREFIX = 'fire-planner:backup:';
 
-/** The subset of the Web Storage API the store needs (an in-memory implementation is used in tests). */
-export type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+/** Backups kept in storage: writing a new one removes the oldest beyond this number. */
+export const MAX_BACKUPS = 5;
+
+/**
+ * The subset of the Web Storage API the store needs (an in-memory implementation is used in tests). `key` and
+ * `length` are optional: without them backups cannot be listed or pruned.
+ */
+export type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> & Partial<Pick<Storage, 'key' | 'length'>>;
 
 export interface PersistenceOptions {
   now?: () => Date;
@@ -61,10 +70,51 @@ export function saveState(storage: StorageLike | null, state: PlannerState): Sav
   }
 }
 
-/** Copies `raw` to a new backup key. Returns the key, or null if the write failed. */
+export interface BackupInfo {
+  key: string;
+  /** ISO timestamp taken from the key (when the backup was written). */
+  createdAt: string;
+  /** Size of the stored text, characters. */
+  size: number;
+}
+
+/** Backups in storage, newest first. Empty when the storage cannot enumerate its keys. */
+export function listBackups(storage: StorageLike | null): BackupInfo[] {
+  if (!storage || typeof storage.key !== 'function' || typeof storage.length !== 'number') return [];
+  const out: BackupInfo[] = [];
+  try {
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (key === null || !key.startsWith(BACKUP_KEY_PREFIX)) continue;
+      const value = storage.getItem(key);
+      const stamp = key.slice(BACKUP_KEY_PREFIX.length).replace(/-\d+$/, '');
+      out.push({ key, createdAt: stamp, size: value?.length ?? 0 });
+    }
+  } catch {
+    return out;
+  }
+  return out.sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
+}
+
+/** Removes the oldest backups so that at most `keep` remain. */
+function pruneBackups(storage: StorageLike, keep: number): void {
+  for (const backup of listBackups(storage).slice(Math.max(0, keep))) {
+    try {
+      storage.removeItem(backup.key);
+    } catch {
+      // Removing is best effort.
+    }
+  }
+}
+
+/**
+ * Copies `raw` to a new backup key, first removing the oldest backups beyond MAX_BACKUPS − 1. Returns the key, or
+ * null if the write failed.
+ */
 export function writeBackup(storage: StorageLike, raw: string, now: Date): string | null {
   const base = `${BACKUP_KEY_PREFIX}${now.toISOString()}`;
   try {
+    pruneBackups(storage, MAX_BACKUPS - 1);
     let key = base;
     for (let n = 2; storage.getItem(key) !== null; n++) key = `${base}-${n}`;
     storage.setItem(key, raw);
@@ -112,22 +162,25 @@ export function normalizePlans(
   rawPlans: unknown[],
   nowIso: string,
   newId: IdFactory = randomId,
-): { plans: Plan[]; dropped: number } {
+): { plans: Plan[]; dropped: number; coerced: number } {
   const plans: Plan[] = [];
   const ids = new Set<string>();
   let dropped = 0;
+  let coerced = 0;
   for (const raw of rawPlans) {
-    const plan = normalizePlan(raw, { now: nowIso });
+    const report: MergeReport = { coerced: [] };
+    const plan = normalizePlan(raw, { now: nowIso, report, newId });
     if (!plan) {
       dropped++;
       continue;
     }
+    coerced += report.coerced.length;
     const rawId = isPlainObject(raw) ? raw.id : undefined;
     if (typeof rawId !== 'string' || rawId === '' || ids.has(rawId)) plan.id = uniqueId('plan', ids, newId);
     ids.add(plan.id);
     plans.push(plan);
   }
-  return { plans, dropped };
+  return { plans, dropped, coerced };
 }
 
 function buildState(raw: Record<string, unknown>, plans: Plan[]): PlannerState {
@@ -184,7 +237,7 @@ export function loadState(storage: StorageLike | null, opts: PersistenceOptions 
     if (plans.length > 0) {
       return {
         state: { version: STATE_VERSION, plans, activePlanId: plans[0].id, compareIds: [], ui: createDefaultUi() },
-        notices: [{ level: 'info', messageKey: 'common.notice.migrated', params: { count: plans.length } }],
+        notices: [{ level: 'info', messageKey: 'common.notice.migrated', params: { count: plans.length, age: V1_ASSUMED_AGE } }],
         source: 'legacy',
         writable: true,
         shouldSave: true,
@@ -202,31 +255,43 @@ export function loadState(storage: StorageLike | null, opts: PersistenceOptions 
   return { state: examplesState(nowIso), notices: [], source: 'examples', writable: true, shouldSave: false };
 }
 
+/** Unreadable stored data: back it up, then start from the examples (read-only if the backup fails). */
+function recoverUnreadable(storage: StorageLike, raw: string, now: Date, ui?: UiPrefs): LoadResult {
+  const key = writeBackup(storage, raw, now);
+  return {
+    state: examplesState(now.toISOString(), ui),
+    notices:
+      key !== null
+        ? [{ level: 'warning', messageKey: 'common.notice.corrupted', params: { key } }]
+        : [{ level: 'error', messageKey: 'common.notice.backupFailed' }],
+    source: 'recovered',
+    writable: key !== null,
+    shouldSave: key !== null,
+  };
+}
+
 function loadV2(storage: StorageLike, raw: string, now: Date, newId: IdFactory): LoadResult {
   const nowIso = now.toISOString();
   const parsed = parseJson(raw);
   const usable = parsed.ok && isPlainObject(parsed.value) && Array.isArray(parsed.value.plans);
 
   if (!usable) {
-    const key = writeBackup(storage, raw, now);
-    return {
-      state: examplesState(nowIso, parsed.ok && isPlainObject(parsed.value) ? readUi(parsed.value.ui) : undefined),
-      notices:
-        key !== null
-          ? [{ level: 'warning', messageKey: 'common.notice.corrupted', params: { key } }]
-          : [{ level: 'error', messageKey: 'common.notice.backupFailed' }],
-      source: 'recovered',
-      writable: key !== null,
-      shouldSave: key !== null,
-    };
+    return recoverUnreadable(storage, raw, now, parsed.ok && isPlainObject(parsed.value) ? readUi(parsed.value.ui) : undefined);
   }
 
   const data = parsed.value as Record<string, unknown>;
-  const { plans, dropped } = normalizePlans(data.plans as unknown[], nowIso, newId);
+  let normalized: ReturnType<typeof normalizePlans>;
+  try {
+    normalized = normalizePlans(data.plans as unknown[], nowIso, newId);
+  } catch {
+    // Data that cannot even be copied (e.g. nested deeper than structuredClone allows): treat it as unreadable.
+    return recoverUnreadable(storage, raw, now, readUi(data.ui));
+  }
+  const { plans, dropped, coerced } = normalized;
   const notices: NoticeInit[] = [];
   const unknownVersion = data.version !== STATE_VERSION;
   let backupFailed = false;
-  if (dropped > 0 || unknownVersion) {
+  if (dropped > 0 || unknownVersion || coerced > 0) {
     const key = writeBackup(storage, raw, now);
     if (key === null) {
       backupFailed = true;
@@ -241,6 +306,9 @@ function loadV2(storage: StorageLike, raw: string, now: Date, newId: IdFactory):
       }
       if (dropped > 0) {
         notices.push({ level: 'warning', messageKey: 'common.notice.droppedEntries', params: { count: dropped, key } });
+      }
+      if (coerced > 0) {
+        notices.push({ level: 'warning', messageKey: 'common.notice.coercedFields', params: { count: coerced, key } });
       }
     }
   }
@@ -260,6 +328,6 @@ function loadV2(storage: StorageLike, raw: string, now: Date, newId: IdFactory):
     source: 'stored',
     writable: !backupFailed,
     // Rewrite in the current format once the original has been backed up.
-    shouldSave: !backupFailed && (dropped > 0 || unknownVersion),
+    shouldSave: !backupFailed && (dropped > 0 || unknownVersion || coerced > 0),
   };
 }

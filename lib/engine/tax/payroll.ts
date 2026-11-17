@@ -41,6 +41,62 @@ export function productivityBonusEligible(priorYearIncome: number, rules: TaxRul
   return nonNegative(priorYearIncome) <= finite(rules.productivityBonus.priorYearIncomeLimit);
 }
 
+/**
+ * Steps 1–3 of SPEC §5.1, shared by computePayroll and deductiblePensionRoom. None of them depends on the employee
+ * pension contribution.
+ */
+interface OrdinaryIncome {
+  gross: number;
+  inps: number;
+  productivityBonusTax: number;
+  /** RAL + ordinary bonus + bonus above the cap − their INPS. */
+  ordinaryIncomeAfterInps: number;
+  /** Employer contribution above the deduction cap (taxable income). */
+  employerExcessTaxable: number;
+  /** Deductible room for the employee contribution: cap − employer, limited by the income it is deducted from (≥ 0). */
+  deductibleRoom: number;
+}
+
+function ordinaryIncome(input: PayrollInput, rules: TaxRules): OrdinaryIncome {
+  const ral = nonNegative(input.ral);
+  const ordinaryBonus = nonNegative(input.ordinaryBonus);
+  const productivityBonus = nonNegative(input.productivityBonus);
+  const employerContribution = nonNegative(input.employerPensionContribution);
+  const priceIndex = positiveFactor(input.priceIndex);
+  const calendarYear = Number.isFinite(input.calendarYear) ? input.calendarYear : rules.referenceYear;
+
+  // 1. INPS on the whole gross (RAL + bonuses), with the additional 1% and the ceiling.
+  const gross = ral + ordinaryBonus + productivityBonus;
+  const inps = employeeInps(gross, rules, priceIndex);
+
+  // 3. Productivity bonus: the cap is measured on the bonus NET of its employee INPS (circ. AdE 28/E/2016), so the
+  //    gross part within the cap (if eligible) is min(bonus, cap / (1 − INPS share)); it pays the substitute tax on
+  //    (that part − its INPS) ≤ cap. The excess (or the whole bonus if ineligible) joins ordinary income.
+  const regime = productivityBonusRegime(rules, calendarYear);
+  const inpsShare = gross > 0 ? inps / gross : 0;
+  const capGross = inpsShare < 1 ? regime.cap / (1 - inpsShare) : Infinity;
+  const bonusWithinCap = productivityBonusEligible(input.priorYearIncome, rules) ? Math.min(productivityBonus, capGross) : 0;
+  const bonusExcess = productivityBonus - bonusWithinCap;
+  const inpsOnBonusWithinCap = bonusWithinCap * inpsShare;
+  const productivityBonusTax = (Math.max(0, bonusWithinCap - inpsOnBonusWithinCap) * regime.ratePct) / 100;
+
+  // 2. One cap for employee + employer; the employer excess is taxable income.
+  const cap = nonNegative(rules.pensionFund.deductionCap);
+  const employerExcessTaxable = Math.max(0, employerContribution - cap);
+  const ordinaryIncomeAfterInps = ral + ordinaryBonus + bonusExcess - (inps - inpsOnBonusWithinCap);
+  const deductibleRoom = Math.max(0, Math.min(cap - employerContribution, ordinaryIncomeAfterInps + employerExcessTaxable));
+  return { gross, inps, productivityBonusTax, ordinaryIncomeAfterInps, employerExcessTaxable, deductibleRoom };
+}
+
+/**
+ * Largest employee pension contribution that is deductible in the year (SPEC §5.1 step 2): the room the employer
+ * contribution leaves in the cap, limited by the income it is deducted from. It does not depend on the employee
+ * contribution of `input`, and it is 0 when there is no salary.
+ */
+export function deductiblePensionRoom(input: PayrollInput, rules: TaxRules): number {
+  return ordinaryIncome(input, rules).deductibleRoom;
+}
+
 export interface PayrollOptions {
   /**
    * false = skip the two extra tax recomputations behind `pensionTaxSaving` and `marginalRatePct` (both returned as
@@ -64,39 +120,14 @@ export interface PayrollOptions {
  *   contract: (irpefNet + surcharges) / gross.
  */
 export function computePayroll(input: PayrollInput, rules: TaxRules, options: PayrollOptions = {}): PayrollBreakdown {
-  const ral = nonNegative(input.ral);
-  const ordinaryBonus = nonNegative(input.ordinaryBonus);
-  const productivityBonus = nonNegative(input.productivityBonus);
   const employeeContribution = nonNegative(input.employeePensionContribution);
-  const employerContribution = nonNegative(input.employerPensionContribution);
-  const priceIndex = positiveFactor(input.priceIndex);
-  const calendarYear = Number.isFinite(input.calendarYear) ? input.calendarYear : rules.referenceYear;
-  const irpefFactor = irpefIndexFactor(rules, priceIndex);
+  const irpefFactor = irpefIndexFactor(rules, positiveFactor(input.priceIndex));
 
-  // 1. INPS on the whole gross (RAL + bonuses), with the additional 1% and the ceiling.
-  const gross = ral + ordinaryBonus + productivityBonus;
-  const inps = employeeInps(gross, rules, priceIndex);
+  // 1–3. INPS, productivity bonus split and substitute tax, employer excess over the cap.
+  const { gross, inps, productivityBonusTax, ordinaryIncomeAfterInps, employerExcessTaxable, deductibleRoom } = ordinaryIncome(input, rules);
 
-  // 3. Productivity bonus: the cap is measured on the bonus NET of its employee INPS (circ. AdE 28/E/2016), so the
-  //    gross part within the cap (if eligible) is min(bonus, cap / (1 − INPS share)); it pays the substitute tax on
-  //    (that part − its INPS) ≤ cap. The excess (or the whole bonus if ineligible) joins ordinary income.
-  const regime = productivityBonusRegime(rules, calendarYear);
-  const inpsShare = gross > 0 ? inps / gross : 0;
-  const capGross = inpsShare < 1 ? regime.cap / (1 - inpsShare) : Infinity;
-  const bonusWithinCap = productivityBonusEligible(input.priorYearIncome, rules) ? Math.min(productivityBonus, capGross) : 0;
-  const bonusExcess = productivityBonus - bonusWithinCap;
-  const inpsOnBonusWithinCap = bonusWithinCap * inpsShare;
-  const productivityBonusTax = (Math.max(0, bonusWithinCap - inpsOnBonusWithinCap) * regime.ratePct) / 100;
-
-  // 2. Pension contributions: one cap for employee + employer; employer excess is taxable income.
-  const cap = nonNegative(rules.pensionFund.deductionCap);
-  const employerExcessTaxable = Math.max(0, employerContribution - cap);
-  const ordinaryIncomeAfterInps = ral + ordinaryBonus + bonusExcess - (inps - inpsOnBonusWithinCap);
-  const deductiblePension = Math.min(
-    employeeContribution,
-    Math.max(0, cap - employerContribution),
-    Math.max(0, ordinaryIncomeAfterInps + employerExcessTaxable),
-  );
+  // 2. The employee contribution is deductible within the cap room left by the employer and the income available.
+  const deductiblePension = Math.min(employeeContribution, deductibleRoom);
   const nonDeductiblePension = employeeContribution - deductiblePension;
 
   // 4. Reddito di lavoro dipendente = reddito complessivo (no other income).

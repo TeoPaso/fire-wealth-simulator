@@ -61,6 +61,7 @@ const it = {
     'Quasi tutto il portafoglio è in un solo strumento azionario (oltre il {max}%): va bene se è un ETF globale molto diversificato, altrimenti valuta di diversificare.',
   'issues.negativeSavingsWhileWorking':
     'Mentre lavori le uscite superano le entrate (la prima volta a {age} anni): il piano usa i risparmi già prima del ritiro.',
+  'issues.shortfallWhileWorking': 'I soldi accessibili finiscono mentre lavori ancora (a {age} anni mancano circa {amount} € di oggi) e le spese di quell’anno non sono coperte (evento «{event}»): nessuna età di ritiro può funzionare finché non riduci quella spesa o aumenti i risparmi.',
   'issues.bonusAboveCap':
     'Il premio supera il tetto agevolato (tetto {cap} €, dai {age} anni): la parte in più è tassata come stipendio.',
   'issues.bonusIneligibleIncome':
@@ -85,6 +86,7 @@ const it = {
     'Il riscatto per inoccupazione cadrebbe negli ultimi anni prima della pensione di vecchiaia, quando non è ammesso (a {redemptionAge} anni): il piano usa la RITA (da {age} anni).',
   'issues.pfOrdinaryBenefit':
     'Con questa età di ritiro né la RITA né il riscatto sono possibili: il fondo è pagato come prestazione ordinaria alla pensione (da {age} anni).',
+  'issues.pfOrdinaryBenefitLateAccess': 'Hai scelto la RITA, ma l’età di accesso non è prima della pensione di vecchiaia (accesso a {accessAge} anni, vecchiaia a {oldAge} anni): così la RITA non anticipa nulla e il fondo è pagato come prestazione ordinaria. Per anticiparlo abbassa l’età di accesso (dai {ritaAge} anni in su).',
   'issues.ritaDelayedToRetirement':
     'La RITA richiede di aver smesso di lavorare: parte quando lasci il lavoro (a {age} anni) invece che all’età di accesso indicata.',
   'issues.statePensionAfterHorizon':
@@ -144,6 +146,7 @@ const en: Record<keyof typeof it, string> = {
     'Almost all the portfolio is in a single equity instrument (above {max}%): fine if it is a well-diversified global ETF, otherwise consider diversifying.',
   'issues.negativeSavingsWhileWorking':
     'While you work, outflows exceed inflows (first at age {age}): the plan uses savings even before you retire.',
+  'issues.shortfallWhileWorking': 'Your accessible money runs out while you are still working (at age {age} about €{amount} in today’s money is missing) and that year’s spending is not covered (event “{event}”): no retirement age can work until you reduce that expense or save more.',
   'issues.bonusAboveCap': 'The bonus exceeds the reduced-rate cap (cap €{cap}, from age {age}): the excess is taxed like salary.',
   'issues.bonusIneligibleIncome':
     'Last year’s income exceeds the limit for the reduced bonus tax (limit €{limit}, from age {age}): the bonus is taxed like salary.',
@@ -167,6 +170,7 @@ const en: Record<keyof typeof it, string> = {
     'The redemption for unemployment would fall in the last years before the old-age pension, when it is not allowed (at age {redemptionAge}): the plan uses RITA (from age {age}).',
   'issues.pfOrdinaryBenefit':
     'With this retirement age neither RITA nor the redemption are possible: the fund is paid as the ordinary benefit at retirement (from age {age}).',
+  'issues.pfOrdinaryBenefitLateAccess': 'You chose RITA, but the access age is not before the old-age pension (access at {accessAge}, old-age pension at {oldAge}): RITA then brings nothing forward and the fund is paid as an ordinary benefit. To get it earlier, lower the access age (from {ritaAge}).',
   'issues.ritaDelayedToRetirement':
     'RITA requires that you have stopped working: it starts when you leave work (at age {age}) instead of the access age entered.',
   'issues.statePensionAfterHorizon': 'The INPS pension would start after the end of the plan horizon (at age {age}): it does not enter the plan.',

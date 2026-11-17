@@ -155,8 +155,10 @@ validazione segnala comunque il dato sbagliato.
   - dipendente = `ral × employeePensionPct%` + versamento volontario;
   - versamento volontario (`savingsPolicy.voluntaryPension`):
     - `none`: 0;
-    - `fillCap`: `max(0, tetto − datore − ral × employeePensionPct%)`, così tu e il datore arrivate esattamente
-      al tetto;
+    - `fillCap`: porta il tuo contributo fino allo spazio deducibile, cioè `max(0, min(tetto − datore, reddito
+      ordinario dopo l'INPS + eccedenza del datore) − ral × employeePensionPct%)` (sezione 4.3). Con uno stipendio
+      normale tu e il datore arrivate esattamente al tetto; in un anno senza stipendio (RAL 0) non viene trattenuto
+      nulla, e con uno stipendio molto basso il versamento si ferma al reddito da cui si può dedurre;
     - `fixed`: `voluntaryPensionFixedToday × P_t`;
   - tetto = `pensionFund.deductionCap` (5.300 €, nominale). Il TFR non conta nel tetto.
   - I contributi del dipendente, volontari compresi, sono trattenuti in busta paga: riducono il netto.
@@ -458,8 +460,20 @@ Fonte: [RITA, anticipazioni, riscatti][fpAccess].
 
 Finché non è pagato, il fondo conta nel patrimonio bloccato al valore netto di un riscatto all'aliquota ordinaria:
 `saldo − min(parte tassabile, saldo) × aliquota di uscita` (`pensionFundNet`). Gli anni di iscrizione sono quelli
-alla fine dell'anno. Il capitale convertito in rendita esce dal patrimonio al momento dell'accesso: da lì resta
-solo il flusso annuo della rendita.
+alla fine dell'anno.
+
+La parte convertita in rendita resta nel patrimonio bloccato come **valore della rendita**
+(`pensionAnnuityValue`): il valore a fine anno delle rate nette ancora da ricevere fino a `lifeExpectancy`, pagate
+a metà anno e scontate al rendimento atteso del comparto al netto dei costi e dell'imposta sui rendimenti (quello
+che il capitale avrebbe reso restando nel fondo):
+
+```
+d      = max(0, ((1 + expectedReturnPct%) × (1 − costPct%) − 1) × (1 − aliquota sui rendimenti))
+valore = rendita netta × Σ_{k=1..n} (1 + d)^−(k − ½)                     n = lifeExpectancy − età (rate rimaste)
+```
+
+Così l'accesso al fondo non fa sparire metà del suo valore dal patrimonio: il valore scende ogni anno con le rate
+pagate e vale 0 alla fine dell'orizzonte. Non è denaro accessibile: arriva solo come rendita annua.
 
 ### 6.7 Fondo disattivato
 
@@ -493,11 +507,15 @@ Con `statePension.mode: 'contributivo'`.
 **Ogni anno prima della pensione.**
 ```
 montante = montante × max(1, 1 + π_t + realGdpGrowthPct%)                 (rivalutazione, mai negativa: DL 65/2015)
-montante = montante + 33% × min(RAL, inps.ceiling × f_INPS)               (solo negli anni di lavoro)
+montante = montante + 33% × min(lordo, inps.ceiling × f_INPS)             (solo negli anni di lavoro)
 ```
-I premi non entrano nella base pensionabile: conta solo la RAL.
+- `lordo` = RAL + premio ordinario + premio di produttività: la stessa base su cui paghi l'INPS (sezione 4.1). Il
+  premio di produttività ha l'imposta sostitutiva ma paga i contributi ordinari, quindi entra nel montante
+  (L. 335/1995). Il premio versato al fondo pensione o convertito in welfare non paga contributi e non entra.
 
-**Anni di contributi** = `assets.inps.contributionYears` più un anno per ogni anno di lavoro.
+**Anni di contributi** = `assets.inps.contributionYears` più un anno per ogni anno di lavoro con una base
+contributiva (`lordo` > 0). Una fase con RAL 0 (pausa, anno sabbatico, disoccupazione senza NASpI) non aggiunge
+anni né montante.
 
 **Età della pensione.** Il motore prova, nell'ordine:
 1. `max(claimAge, oldAgeAge)` (67), se a quell'età hai almeno `oldAgeMinYears` (20) anni di contributi;
@@ -598,6 +616,12 @@ L'obiettivo del fondo di emergenza usa le spese dell'anno, dopo un eventuale tag
 - **Tasso di risparmio** di un anno di lavoro (`savingsRatePct`) = risparmio netto / netto in busta paga.
 - **Avviso `negativeSavingsWhileWorking`**: mentre lavori, il bilancio ricorrente dell'anno, escluse le spese e
   le entrate per eventi, è negativo.
+- **Avviso `shortfallWhileWorking`**: c'è un ammanco in un anno in cui lavori ancora, eventi compresi (per esempio
+  un acquisto più grande dei soldi accessibili). Parametri: età, importo mancante in euro di oggi e, se in
+  quell'anno c'è una spesa per eventi, il nome della più grande; il percorso del campo punta a quell'evento,
+  altrimenti alle spese mensili. Un ammanco mentre lavori fa fallire ogni età di ritiro successiva, quindi è lui,
+  e non l'obiettivo FI, la causa di un'età FI assente (sezione 12.1). Il motore non presta soldi: per un acquisto
+  finanziato, inserisci l'anticipo come evento una tantum e le rate come evento di più anni.
 
 ## 10. Portafoglio
 
@@ -666,6 +690,7 @@ Tutti i saldi sono di fine anno, in euro nominali. Per averli in euro di oggi si
 ```
 accessibile (accessibleNet) = liquidità + portafoglio − imposte latenti
 bloccato    (lockedNet)     = fondo pensione netto (6.6) + TFR in azienda netto (5.3), finché non sono pagati
+                              + valore della rendita del fondo (6.6), dopo l'accesso
 patrimonio netto (netWorth) = accessibile + bloccato
 ```
 
@@ -683,6 +708,10 @@ partenza (`startBalances`).
   per una. È `null` se nessuna età funziona. Può essere uguale all'età attuale.
 - Contano solo i soldi accessibili. Il denaro bloccato conta dal momento in cui viene pagato.
 - Non c'è un obiettivo di eredità: alla fine dell'orizzonte il patrimonio accessibile può essere vicino a zero.
+- Gli anni di lavoro prima di R sono identici per tutte le età di ritiro. Un ammanco a un'età g mentre lavori fa
+  quindi fallire ogni R > g: l'età FI è `null` anche se il piano, superato quell'anno, funzionerebbe. In questo
+  caso `runPlan` aggiunge l'avviso `shortfallWhileWorking` (sezione 9) con l'età e l'importo che manca: è quello
+  da risolvere, non l'obiettivo FI.
 
 ### 12.2 Età di ritiro del piano mostrato
 
@@ -766,7 +795,9 @@ Somme dei flussi di ogni anno divisi per `P_t`, cioè in euro di oggi:
   Le normali correlate si ottengono con la fattorizzazione di Cholesky. Se la matrice non è definita positiva, il
   motore riduce le correlazioni verso zero del minimo necessario, scegliendo tra alcuni passi prefissati.
 - **Inflazione:** `π_t ~ N(inflationPct, inflationVolatilityPct)`, indipendente dai rendimenti, limitata a
-  [−3%, +15%].
+  `inflationPct ± 3 × inflationVolatilityPct` (`MARKET_MODEL.inflationClipSigmas`). Il limite è simmetrico, quindi
+  media e mediana dell'inflazione simulata restano `inflationPct`, come nel percorso deterministico, per qualunque
+  valore ammesso dalla validazione.
 - **Anni indipendenti.** Non ci sono autocorrelazione, ritorno verso la media o regimi di mercato.
 
 ### 13.2 Riproducibilità
@@ -836,8 +867,8 @@ avvisi, poi le informazioni.
   - piano: `tfrBackToCompany`, `returnVeryHigh` (oltre 8%), `realReturnNonPositive`, `capitalShareAboveLegal`,
     `ritaRequiresUnemployment`, `claimBeforeOldAge`, `singleAssetConcentration` (oltre l'80% in un solo strumento
     azionario);
-  - dopo la simulazione: `negativeSavingsWhileWorking`, `bonusAboveCap`, `bonusIneligibleIncome`,
-    `contributionAboveCap`, `noStatePension`, `pfShortMembership`, `pfAccessAfterHorizon`.
+  - dopo la simulazione: `negativeSavingsWhileWorking`, `shortfallWhileWorking`, `bonusAboveCap`,
+    `bonusIneligibleIncome`, `contributionAboveCap`, `noStatePension`, `pfShortMembership`, `pfAccessAfterHorizon`.
 - **Le informazioni:**
   - piano: `montanteEstimated`, `bonusToFundDisabled`, `tfrPartialCheckContract` (quota di TFR tra 0 e 100%:
     ammessa se il CCNL o il fondo prevede una quota minima, o per chi lavorava prima del 29/04/1993);
@@ -878,7 +909,8 @@ conosciamo.
   produttività (tetto e reddito massimo): il motore converte tutto il premio.
 - Nel primo anno il requisito di reddito del premio usa il reddito dello stesso anno.
 - Carriera senza interruzioni: niente disoccupazione, part-time o pause, a meno di inserire una fase con RAL 0.
-  Un cambio di fase è un salto di stipendio.
+  Una fase con RAL 0 non versa contributi INPS e non conta come anni di contributi. Un cambio di fase è un salto di
+  stipendio.
 - Le regole 2026 valgono per sempre: nessuna riforma futura. Gli scaglioni IRPEF non sono indicizzati (opzione
   modificabile).
 - Le addizionali predefinite sono il minimo regionale (1,23%) e un'aliquota comunale tipica (0,8%), non quelle
@@ -893,7 +925,8 @@ conosciamo.
 
 **Fondo pensione**
 - La rendita è costante in euro nominali, perde potere d'acquisto e si ferma alla fine dell'orizzonte. Il tasso di
-  conversione è un input, non una tavola attuariale.
+  conversione è un input, non una tavola attuariale. Nel patrimonio la rendita vale le rate rimaste, scontate al
+  rendimento netto atteso del comparto (sezione 6.6): è una convenzione di valutazione, non un prezzo di mercato.
 - La quota di rendimento finanziario maturata durante l'erogazione della rendita, che per legge ha un trattamento
   fiscale proprio, non è distinta.
 - Gli anni di iscrizione sono anni solari interi dall'anno di prima iscrizione.
@@ -912,8 +945,8 @@ conosciamo.
   +3 mesi nel 2028).
 - La rivalutazione del montante è inflazione + crescita reale del PIL. Per legge è la media quinquennale del PIL
   nominale.
-- La base pensionabile è la sola RAL, senza premi.
-- Ogni anno di lavoro vale un anno di contributi, qualunque sia lo stipendio.
+- Ogni anno di lavoro con uno stipendio vale un anno intero di contributi, anche se lo stipendio è basso. Per legge
+  si accreditano le settimane in proporzione al minimale contributivo settimanale; gli anni con RAL 0 non contano.
 - Sono modellate solo la pensione di vecchiaia (67 anni con 20 di contributi) e quella a 71 anni con 5. Non sono
   modellate la pensione anticipata, le uscite agevolate e le soglie minime di importo per i "contributivi puri".
   Con l'importo stimato puoi indicare qualunque età, e ricevi un avviso.
@@ -934,10 +967,12 @@ conosciamo.
   lo 0,2%) non sono distinti dal conto corrente.
 - La liquidità oltre il fondo di emergenza resta sul conto: non viene investita automaticamente.
 - Niente immobili, mutui o debiti con il loro piano di ammortamento: affitto e rata vanno nelle spese mensili, gli
-  acquisti negli eventi.
+  acquisti negli eventi. Il motore non prende soldi in prestito: un acquisto più grande dei soldi accessibili è un
+  ammanco (avviso `shortfallWhileWorking` se lavori ancora). Per un acquisto con mutuo inserisci l'anticipo come
+  evento una tantum e le rate come evento di più anni.
 - Monte Carlo:
   - rendimenti lognormali indipendenti di anno in anno, con correlazioni costanti;
-  - inflazione indipendente dai rendimenti;
+  - inflazione indipendente dai rendimenti, normale e limitata a ± 3 deviazioni standard dalla media;
   - niente code più pesanti della lognormale, crisi prolungate o regimi di mercato;
   - stipendio, spese e durata della vita non sono casuali.
 - Con 1.000 simulazioni, una probabilità di successo intorno al 90% ha un errore statistico di circa ±1 punto.
@@ -967,8 +1002,10 @@ della v1 viene copiato com'è e compare come problema di validazione. Ogni piano
 
 - La v1 non conosceva l'età: il motore assume 30 anni. Gli anni delle fasi (1…N) diventano età (30…29+N), gli
   aumenti reali sono 0.
-- **Spese mensili** = (netto del primo anno con le regole 2026 − risparmi della v1) / 12. I risparmi sono: mensili,
-  tredicesima e quattordicesima, premio netto e risparmio fiscale del fondo.
+- **Spese mensili** = (netto del primo anno con le regole 2026 − risparmi della v1) / 12. I risparmi sono quelli
+  che avevi inserito: mensili, tredicesima e quattordicesima, più il premio netto. Il rimborso IRPEF dei contributi
+  al fondo che la v1 aggiungeva a parte non è un risparmio: nella v2 la deduzione è già dentro il netto in busta
+  paga (sezione 4.7), quindi contarlo di nuovo abbasserebbe le spese.
 - **Fondo pensione.**
   - "Massimizza tetto deducibilità" diventa `fillCap`.
   - Una quota di risparmi destinata al fondo diventa un versamento volontario fisso.

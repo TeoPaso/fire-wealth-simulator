@@ -49,7 +49,7 @@ export function NetPayPreview({ index }: { index: number }) {
       <p className="mt-1 text-xs text-slate-400">
         {t('inputs.career.netPay.annual', { amount: format.eur(annual) })}
         {' · '}
-        {t('inputs.career.netPay.marginal', { pct: format.pct(preview.withBonus.marginalRatePct, 0) })}
+        {t('inputs.career.netPay.marginal', { pct: format.pct(preview.withBonus.marginalRatePct, 1) })}
       </p>
       {preview.bonusOutsidePayroll ? (
         <p className="mt-1 text-xs text-slate-400">

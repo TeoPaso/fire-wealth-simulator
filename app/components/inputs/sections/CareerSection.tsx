@@ -76,14 +76,16 @@ function PhaseEditor({ index, count }: { index: number; count: number }) {
   const regimeOptions = useTranslatedOptions(BONUS_REGIMES);
   const bonusOptions = useMemo<SelectOption<BonusRegime>[]>(
     () => [
-      {
-        value: 'productivity',
-        label: t('inputs.career.bonusRegime.productivity', { rate: format.num(numOr(pb?.ratePct), { decimals: 2 }) }),
-      },
-      ...regimeOptions,
+      // "agevolata", not the 2026 rate: the plan applies the later rate for most years (help text has the details).
+      { value: 'productivity', label: t('inputs.career.bonusRegime.productivity') },
+      ...regimeOptions.map((o) =>
+        o.value === 'pensionFund' && !fundEnabled ? { ...o, label: t('inputs.career.bonusRegime.pensionFundOff') } : o,
+      ),
     ],
-    [t, format, pb?.ratePct, regimeOptions],
+    [t, regimeOptions, fundEnabled],
   );
+  // Without a pension fund these fields have no effect: disabled with the same "used only with…" hint as elsewhere.
+  const fundOnly = fundEnabled ? {} : { disabled: true, description: t('inputs.career.onlyWithFund') };
   const bonusHelp =
     pb?.validUntilYear === null || pb?.validUntilYear === undefined
       ? t('inputs.career.bonusRegimeHelpNoExpiry', {
@@ -248,6 +250,7 @@ function PhaseEditor({ index, count }: { index: number; count: number }) {
           value={numOr(phase.employeePensionPct)}
           min={0}
           step={0.1}
+          {...fundOnly}
           onChange={(v) =>
             set((p) => {
               p.employeePensionPct = v;
@@ -262,6 +265,7 @@ function PhaseEditor({ index, count }: { index: number; count: number }) {
           value={numOr(phase.employerPensionPct)}
           min={0}
           step={0.1}
+          {...fundOnly}
           onChange={(v) =>
             set((p) => {
               p.employerPensionPct = v;
@@ -283,6 +287,7 @@ function PhaseEditor({ index, count }: { index: number; count: number }) {
           min={0}
           max={100}
           step={25}
+          {...fundOnly}
           onChange={(v) =>
             set((p) => {
               p.tfrToFundPct = v;

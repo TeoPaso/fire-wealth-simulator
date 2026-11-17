@@ -1,6 +1,6 @@
-import type { AssetClass, AssetKind, BonusRegime, CareerPhase, Holding, Plan, TaxRules } from './types';
+import type { AssetClass, AssetKind, BonusRegime, CareerPhase, Holding, PayrollInput, Plan, TaxRules } from './types';
 import { createDefaultPlan } from './defaults';
-import { computePayroll } from './tax/payroll';
+import { computePayroll, deductiblePensionRoom } from './tax/payroll';
 import { tfrQuota } from './tax/tfr';
 
 /**
@@ -170,40 +170,36 @@ function assetKind(bucket: V1InvestmentBucket): AssetKind {
 interface Payroll0 {
   netIncome: number;
   bonusNet: number;
-  pensionTaxSaving: number;
 }
 
 /** Year-0 net pay of a phase with the v2 rules (same contributions as the v2 engine would compute). */
 function firstYearPayroll(phase: CareerPhase, plan: Plan): Payroll0 {
   const rules: TaxRules = plan.taxRules;
   const ral = Math.max(0, phase.ralToday);
-  let employee = 0;
+  let base = 0;
   let employer = 0;
   if (plan.pensionFund.enabled) {
     employer = phase.employeePensionPct > 0 ? (ral * phase.employerPensionPct) / 100 : 0;
-    const base = (ral * phase.employeePensionPct) / 100;
-    const voluntary =
-      plan.savingsPolicy.voluntaryPension === 'fillCap' ? Math.max(0, rules.pensionFund.deductionCap - employer - base) : 0;
-    employee = base + voluntary;
+    base = (ral * phase.employeePensionPct) / 100;
   }
   const bonus = Math.max(0, phase.bonusGrossToday);
-  const input = {
+  const input: PayrollInput = {
     ral,
     ordinaryBonus: phase.bonusRegime === 'ordinary' ? bonus : 0,
     productivityBonus: phase.bonusRegime === 'productivity' ? bonus : 0,
     priorYearIncome: ral,
-    employeePensionContribution: employee,
+    employeePensionContribution: base,
     employerPensionContribution: employer,
     calendarYear: plan.profile.startYear,
     priceIndex: 1,
   };
-  const withBonus = computePayroll(input, rules);
+  // fillCap: up to the deductible room, as in the engine's working year (simulate.ts workYear).
+  if (plan.pensionFund.enabled && plan.savingsPolicy.voluntaryPension === 'fillCap') {
+    input.employeePensionContribution = Math.max(base, deductiblePensionRoom(input, rules));
+  }
+  const withBonus = computePayroll(input, rules, { derived: false });
   const withoutBonus = computePayroll({ ...input, ordinaryBonus: 0, productivityBonus: 0 }, rules, { derived: false });
-  return {
-    netIncome: withBonus.netIncome,
-    bonusNet: withBonus.netIncome - withoutBonus.netIncome,
-    pensionTaxSaving: withBonus.pensionTaxSaving,
-  };
+  return { netIncome: withBonus.netIncome, bonusNet: withBonus.netIncome - withoutBonus.netIncome };
 }
 
 function formatEuro(x: number): string {
@@ -255,8 +251,10 @@ function migrateScenario(raw: unknown, index: number, opts: Required<MigrateOpti
     };
   });
 
-  /* ── Expenses inferred from the first phase: net pay − what v1 saved (savings, 13th/14th extras, net bonus,
-   *    and the IRPEF rebate of the pension contributions, which v1 always reinvested or kept in cash) ── */
+  /* ── Expenses inferred from the first phase: net pay − what the user saved in v1 (monthly savings, 13th/14th
+   *    extras, net bonus). v1's IRPEF rebate of the pension contributions is NOT a saving: it was a phantom inflow on
+   *    top of what the user typed, while the v2 net pay already contains the deduction withheld at source
+   *    (SPEC §5.1), so counting it again would understate the expenses. ── */
   const notes: string[] = [];
   const first = phases[0];
   const firstPhase = plan.career[0];
@@ -269,12 +267,11 @@ function migrateScenario(raw: unknown, index: number, opts: Required<MigrateOpti
       (mensilita >= 13 ? num(first.extraSavings13th, 0) : 0) +
       (mensilita >= 14 ? num(first.extraSavings14th, 0) : 0) +
       // v1 invested bonusInvestPercent of the net bonus and kept the rest in cash: the whole net bonus was saved.
-      payroll.bonusNet +
-      payroll.pensionTaxSaving;
+      payroll.bonusNet;
     plan.spending.monthlyToday = Math.max(0, Math.round((payroll.netIncome - yearlySavings) / 12));
     const pensionPct = num(first.savingsToPensionPercent, num(pf.savingsToPensionPercent, 0));
     if (plan.pensionFund.enabled && pensionPct > 0 && plan.savingsPolicy.voluntaryPension === 'none') {
-      savingsToPension = Math.round((yearlySavings - payroll.pensionTaxSaving) * (pensionPct / 100));
+      savingsToPension = Math.round(yearlySavings * (pensionPct / 100));
       plan.savingsPolicy.voluntaryPension = 'fixed';
       plan.savingsPolicy.voluntaryPensionFixedToday = savingsToPension;
     }

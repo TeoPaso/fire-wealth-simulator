@@ -60,6 +60,28 @@ export function movePhaseDown(career: readonly CareerPhase[], index: number, cur
   return next;
 }
 
+/**
+ * Moves the career phases by `delta` years, keeping their durations (used when the user changes their current
+ * age: phases are absolute ages, so the example's "junior until 35" would otherwise end before a 38-year-old's
+ * current age). The last phase usually means "until the pension": it keeps its end age when that is still after
+ * the previous (moved) phase and after `newAge`, otherwise it moves too. Returns a new array (input untouched);
+ * phases with unusable ages are left as they are (validation reports them).
+ */
+export function shiftCareerAges(career: readonly CareerPhase[], delta: number, newAge: number): CareerPhase[] {
+  const next = career.map((p) => ({ ...p }));
+  if (!Number.isFinite(delta) || delta === 0) return next;
+  next.forEach((phase, i) => {
+    const end = num(phase.untilAge);
+    if (!Number.isFinite(end)) return;
+    if (i === next.length - 1) {
+      const prev = i > 0 ? num(next[i - 1].untilAge) : num(newAge);
+      if (Number.isFinite(prev) && end > prev && end > num(newAge)) return;
+    }
+    phase.untilAge = end + delta;
+  });
+  return next;
+}
+
 /** Years added by "add phase" after the last phase. */
 export const NEW_PHASE_YEARS = 5;
 

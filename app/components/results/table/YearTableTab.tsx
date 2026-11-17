@@ -65,7 +65,8 @@ export function YearTableTab({ data }: TabProps) {
         </div>
       </div>
       <div
-        className="scroll-thin max-h-[70vh] overflow-auto rounded-xl border border-slate-800"
+        // Phones: no inner vertical scroll (the page scrolls; no scroll-in-scroll trap), only horizontal.
+        className="scroll-thin overflow-x-auto rounded-xl border border-slate-800 sm:max-h-[70vh] sm:overflow-auto"
         tabIndex={0}
         role="region"
         aria-label={t('results.table.scrollLabel')}
@@ -121,7 +122,9 @@ export function YearTableTab({ data }: TabProps) {
                     )}
                   >
                     <span className="font-semibold text-slate-100">{format.num(row.age)}</span>
-                    <span className="ml-1.5 text-slate-400">
+                    {/* Phones: only the age is visible, so the sticky column stays narrow (still read aloud). */}
+                    <span className="sr-only text-slate-400 sm:not-sr-only sm:ml-1.5">
+                      {' '}
                       {row.calendarYear} · {statusLabel(row.status)}
                     </span>
                   </th>

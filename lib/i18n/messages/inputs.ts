@@ -8,6 +8,27 @@
 const it = {
   /* ───────────── Panel ───────────── */
   'inputs.panel.intro': 'Inserisci i dati del tuo piano. Gli importi sono in euro di oggi.',
+  'inputs.group.essentials': 'Essenziali',
+  'inputs.group.essentialsHint': 'i dati che contano di più',
+  'inputs.group.details': 'Dettagli',
+  'inputs.group.detailsHint': 'investimenti, fondo pensione, pensione INPS, ritiro',
+  'inputs.group.advanced': 'Avanzate',
+  'inputs.group.advancedHint': 'lascia i valori predefiniti se non sei sicuro',
+  'inputs.intro.title': 'Questo è un piano di esempio',
+  'inputs.intro.body': 'Il piano «{name}» descrive una persona immaginaria: {age} anni, RAL {ral}, spese di {spending} al mese. I risultati diventano tuoi quando inserisci i tuoi dati, a partire da questi:',
+  'inputs.intro.step.age': 'La tua età attuale',
+  'inputs.intro.step.salary': 'Il tuo stipendio lordo annuo (RAL)',
+  'inputs.intro.step.spending': 'Le tue spese mensili',
+  'inputs.intro.step.wealth': 'Il tuo patrimonio attuale (conto, investimenti, fondo pensione)',
+  'inputs.intro.stepDone': 'fatto',
+  'inputs.intro.stepTodo': 'da fare',
+  'inputs.intro.advancedHint': 'Le sezioni “Avanzate” (mercato e regole fiscali) puoi lasciarle come sono.',
+  'inputs.intro.doneTitle': 'I dati principali sono tuoi',
+  'inputs.intro.doneBody': 'Controlla anche carriera, fondo pensione e pensione INPS: ogni modifica aggiorna subito i risultati.',
+  'inputs.intro.dismiss': 'Chiudi la guida',
+  'inputs.notes.title': 'Note sul piano',
+  'inputs.notes.edit': 'Modifica le note',
+  'inputs.notes.editHint': 'Le note restano nel piano (anche nell’export JSON). Cancellale quando hai controllato i dati.',
   'inputs.panel.todayEurosLabel': 'euro di oggi',
   'inputs.panel.todayEurosHelp':
     'Scrivi stipendi, spese e obiettivi come li vedi oggi: 1.500 € al mese significano «quello che oggi compri con 1.500 €». Il simulatore aggiunge da solo l’inflazione anno per anno, così non devi indovinare quanto costerà la vita fra 20 anni. Saldi e patrimonio attuali sono semplicemente i valori di oggi, come li leggi negli estratti conto.',
@@ -52,6 +73,12 @@ const it = {
   'inputs.profile.startYearHelp':
     'L’anno da cui parte la simulazione: la tua età attuale si riferisce a quest’anno. Le regole fiscali sono quelle del {year}: tieni lo stesso anno per coerenza.',
   'inputs.profile.summary': '{age} anni · piano fino a {horizon} · dal {year}',
+  'inputs.profile.shift.body': 'Le fasi di carriera sono definite da età fisse: ora finiscono a {ages} anni. Vuoi spostarle anche loro, così che durino come prima a partire dalla tua età? Finirebbero a {shifted} anni.',
+  'inputs.profile.shift.apply.one': 'Sposta le fasi di {sign}{count} anno',
+  'inputs.profile.shift.apply.other': 'Sposta le fasi di {sign}{count} anni',
+  'inputs.profile.shift.keep': 'Lascia così',
+  'inputs.profile.shift.done': 'Fasi di carriera spostate: ora finiscono a {ages} anni.',
+  'inputs.profile.shift.undo': 'Annulla',
 
   /* ───────────── Lavoro e carriera ───────────── */
   'inputs.career.intro':
@@ -88,7 +115,7 @@ const it = {
   'inputs.career.bonusGrossTodayHelp':
     'Premio di risultato o bonus variabile lordo, in euro di oggi. Cresce insieme allo stipendio. 0 se non lo ricevi.',
   'inputs.career.bonusRegime': 'Come ricevi il premio',
-  'inputs.career.bonusRegime.productivity': 'Premio di produttività (imposta {rate}%)',
+  'inputs.career.bonusRegime.productivity': 'Premio di produttività (imposta agevolata)',
   'inputs.career.bonusRegime.ordinary': 'Tassato come stipendio',
   'inputs.career.bonusRegime.pensionFund': 'Versato al fondo pensione',
   'inputs.career.bonusRegime.welfare': 'Welfare aziendale (beni e servizi)',
@@ -109,10 +136,12 @@ const it = {
     '0% = resta in azienda, 100% = tutto al fondo. Una quota parziale è ammessa se il tuo CCNL o il fondo prevede una quota minima, o se lavori da prima del 29/04/1993. Mandare il TFR al fondo è una scelta irreversibile.',
   'inputs.career.fundDisabledNote':
     'Il fondo pensione è disattivato (sezione «Fondo pensione e TFR»): in questa fase non si versano contributi al fondo e il TFR resta in azienda.',
+  'inputs.career.onlyWithFund': 'Usato solo se usi un fondo pensione.',
+  'inputs.career.bonusRegime.pensionFundOff': 'Versato al fondo pensione (fondo disattivato: tassato come premio di produttività)',
   'inputs.career.netPay.title': 'Netto in busta paga a {age} anni ({year})',
   'inputs.career.netPay.help':
     'Calcolato con le regole fiscali del piano: RAL meno contributi INPS, IRPEF, addizionali e contributo al fondo pensione, più le eventuali somme esenti del cuneo fiscale. Il netto mensile non comprende il premio.',
-  'inputs.career.netPay.perMonth': 'al mese per {n} mensilità',
+  'inputs.career.netPay.perMonth': 'netto mensile in busta per {n} mensilità, senza premio',
   'inputs.career.netPay.noMensilita': 'al mese (mensilità non valide)',
   'inputs.career.netPay.annual': 'Netto annuo con il premio: {amount}',
   'inputs.career.netPay.marginal': 'aliquota marginale {pct}',
@@ -231,7 +260,7 @@ const it = {
   'inputs.portfolio.template.gold': 'Oro',
   'inputs.portfolio.template.moneyMarket': 'Monetario / liquidità',
   'inputs.portfolio.template.custom': 'Personalizzato',
-  'inputs.portfolio.template.hint': 'Rend. {ret} · vol. {vol} · TER {ter} · tasse {tax}',
+  'inputs.portfolio.template.hint': 'Rendimento {ret} · volatilità {vol} · TER {ter} · tasse {tax}',
   'inputs.portfolio.template.customHint': 'Tutti i valori a zero, da compilare',
   'inputs.portfolio.assetUntitled': 'Strumento {n}',
   'inputs.portfolio.assetSubtitle': '{kind} · {pct}',
@@ -347,9 +376,9 @@ const it = {
   'inputs.pf.tfrNote':
     'Quanta parte del TFR mandare al fondo si sceglie in ogni fase di «Lavoro e carriera». Destinarlo al fondo è una scelta irreversibile; una quota parziale è possibile solo se il tuo CCNL o il fondo prevede una quota minima, o se lavori da prima del 29/04/1993.',
   'inputs.pf.summaryOff': 'Non usato',
-  'inputs.pf.summaryOn': 'Rend. {ret} · alla pensione a {age} anni, {capital} in capitale',
-  'inputs.pf.summaryRita': 'Rend. {ret} · RITA da {age} anni',
-  'inputs.pf.summaryRedemption': 'Rend. {ret} · riscatto {after} anni dopo il ritiro',
+  'inputs.pf.summaryOn': 'Rendimento atteso {ret} · alla pensione a {age} anni, {capital} in capitale',
+  'inputs.pf.summaryRita': 'Rendimento atteso {ret} · RITA da {age} anni',
+  'inputs.pf.summaryRedemption': 'Rendimento atteso {ret} · riscatto {after} anni dopo il ritiro',
 
   /* ───────────── Pensione INPS ───────────── */
   'inputs.sp.mode': 'Come stimare la pensione',
@@ -715,6 +744,27 @@ const it = {
 const en: Record<keyof typeof it, string> = {
   /* ───────────── Panel ───────────── */
   'inputs.panel.intro': 'Enter your plan data. Amounts are in today’s euros.',
+  'inputs.group.essentials': 'Essentials',
+  'inputs.group.essentialsHint': 'the inputs that matter most',
+  'inputs.group.details': 'Details',
+  'inputs.group.detailsHint': 'investments, pension fund, state pension, retirement',
+  'inputs.group.advanced': 'Advanced',
+  'inputs.group.advancedHint': 'keep the defaults if unsure',
+  'inputs.intro.title': 'This is an example plan',
+  'inputs.intro.body': 'The plan “{name}” describes a fictional person: aged {age}, gross salary {ral}, spending {spending} a month. The results become yours once you enter your own data, starting with these:',
+  'inputs.intro.step.age': 'Your current age',
+  'inputs.intro.step.salary': 'Your gross annual salary (RAL)',
+  'inputs.intro.step.spending': 'Your monthly spending',
+  'inputs.intro.step.wealth': 'Your current savings (accounts, investments, pension fund)',
+  'inputs.intro.stepDone': 'done',
+  'inputs.intro.stepTodo': 'to do',
+  'inputs.intro.advancedHint': 'You can leave the “Advanced” sections (market and tax rules) as they are.',
+  'inputs.intro.doneTitle': 'The main inputs are yours',
+  'inputs.intro.doneBody': 'Also check your career, pension fund and state pension: every change updates the results right away.',
+  'inputs.intro.dismiss': 'Close the guide',
+  'inputs.notes.title': 'Plan notes',
+  'inputs.notes.edit': 'Edit notes',
+  'inputs.notes.editHint': 'Notes stay with the plan (also in the JSON export). Clear them once you have checked the data.',
   'inputs.panel.todayEurosLabel': 'today’s euros',
   'inputs.panel.todayEurosHelp':
     'Write salaries, expenses and goals as you see them today: €1,500 a month means “what €1,500 buys today”. The simulator adds inflation year by year, so you do not have to guess what life will cost in 20 years. Current balances and wealth are simply today’s values, as shown on your statements.',
@@ -759,6 +809,12 @@ const en: Record<keyof typeof it, string> = {
   'inputs.profile.startYearHelp':
     'The year the simulation starts: your current age refers to this year. The tax rules are those of {year}: keep the same year for consistency.',
   'inputs.profile.summary': 'Age {age} · plan to {horizon} · from {year}',
+  'inputs.profile.shift.body': 'Career phases are defined by fixed ages: they now end at {ages}. Do you want to move them too, so that they last as before starting from your age? They would end at {shifted}.',
+  'inputs.profile.shift.apply.one': 'Move the phases by {sign}{count} year',
+  'inputs.profile.shift.apply.other': 'Move the phases by {sign}{count} years',
+  'inputs.profile.shift.keep': 'Keep them',
+  'inputs.profile.shift.done': 'Career phases moved: they now end at {ages}.',
+  'inputs.profile.shift.undo': 'Undo',
 
   /* ───────────── Work and career ───────────── */
   'inputs.career.intro':
@@ -793,7 +849,7 @@ const en: Record<keyof typeof it, string> = {
   'inputs.career.bonusGrossToday': 'Gross yearly bonus',
   'inputs.career.bonusGrossTodayHelp': 'Performance or variable bonus, gross, in today’s euros. It grows with the salary. 0 if you get none.',
   'inputs.career.bonusRegime': 'How the bonus is paid',
-  'inputs.career.bonusRegime.productivity': 'Productivity bonus ({rate}% tax)',
+  'inputs.career.bonusRegime.productivity': 'Productivity bonus (reduced tax)',
   'inputs.career.bonusRegime.ordinary': 'Taxed like salary',
   'inputs.career.bonusRegime.pensionFund': 'Paid into the pension fund',
   'inputs.career.bonusRegime.welfare': 'Company welfare (goods and services)',
@@ -814,10 +870,12 @@ const en: Record<keyof typeof it, string> = {
     '0% = stays with the company, 100% = all to the fund. A partial share is allowed if your collective agreement (CCNL) or fund sets a minimum share, or if you have worked since before 29/04/1993. Sending the TFR to the fund cannot be undone.',
   'inputs.career.fundDisabledNote':
     'The pension fund is turned off (“Pension fund and TFR” section): in this phase nothing is paid into the fund and the TFR stays with the company.',
+  'inputs.career.onlyWithFund': 'Used only if you have a pension fund.',
+  'inputs.career.bonusRegime.pensionFundOff': 'Paid into the pension fund (fund turned off: taxed as a productivity bonus)',
   'inputs.career.netPay.title': 'Take-home pay at {age} ({year})',
   'inputs.career.netPay.help':
     'Computed with the plan’s tax rules: gross salary minus INPS contributions, income tax, regional and municipal surcharges and pension contribution, plus any tax-free “cuneo fiscale” sums. The monthly figure excludes the bonus.',
-  'inputs.career.netPay.perMonth': 'per month, {n} payments',
+  'inputs.career.netPay.perMonth': 'monthly take-home pay, {n} payments, without the bonus',
   'inputs.career.netPay.noMensilita': 'per month (invalid number of payments)',
   'inputs.career.netPay.annual': 'Annual net with bonus: {amount}',
   'inputs.career.netPay.marginal': 'marginal rate {pct}',
@@ -936,7 +994,7 @@ const en: Record<keyof typeof it, string> = {
   'inputs.portfolio.template.gold': 'Gold',
   'inputs.portfolio.template.moneyMarket': 'Money market / cash',
   'inputs.portfolio.template.custom': 'Custom',
-  'inputs.portfolio.template.hint': 'Ret. {ret} · vol. {vol} · TER {ter} · tax {tax}',
+  'inputs.portfolio.template.hint': 'Return {ret} · volatility {vol} · TER {ter} · tax {tax}',
   'inputs.portfolio.template.customHint': 'All values at zero, to fill in',
   'inputs.portfolio.assetUntitled': 'Instrument {n}',
   'inputs.portfolio.assetSubtitle': '{kind} · {pct}',
@@ -1050,9 +1108,9 @@ const en: Record<keyof typeof it, string> = {
   'inputs.pf.tfrNote':
     'How much of the TFR goes to the fund is set in each phase of “Work and career”. Sending it to the fund cannot be undone; a partial share is possible only if your collective agreement (CCNL) or fund sets a minimum share, or if you have worked since before 29/04/1993.',
   'inputs.pf.summaryOff': 'Not used',
-  'inputs.pf.summaryOn': 'Ret. {ret} · at retirement at {age}, {capital} lump sum',
-  'inputs.pf.summaryRita': 'Ret. {ret} · RITA from {age}',
-  'inputs.pf.summaryRedemption': 'Ret. {ret} · redemption {after} years after retiring',
+  'inputs.pf.summaryOn': 'Expected return {ret} · at retirement at {age}, {capital} lump sum',
+  'inputs.pf.summaryRita': 'Expected return {ret} · RITA from {age}',
+  'inputs.pf.summaryRedemption': 'Expected return {ret} · redemption {after} years after retiring',
 
   /* ───────────── INPS state pension ───────────── */
   'inputs.sp.mode': 'How to estimate the pension',

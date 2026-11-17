@@ -503,9 +503,15 @@ export interface YearRow {
   // Derived
   portfolioLatentTax: number;
   pensionFundNet: number; // value if redeemed at the ordinary exit-tax rate
+  /**
+   * OPTIONAL (added by simulation engine, always set): value at the end of the year of the remaining net payments of
+   * the pension-fund annuity (0 before the ordinary benefit is paid and at the end of the horizon), discounted at the
+   * fund line's expected return net of costs and yield tax. Locked: it is paid only as the yearly annuity.
+   */
+  pensionAnnuityValue?: number;
   companyTfrNet: number;
   accessibleNet: number; // cash + portfolio − latent tax
-  lockedNet: number; // pensionFundNet + companyTfrNet (while not yet paid out)
+  lockedNet: number; // pensionFundNet + companyTfrNet (while not yet paid out) + pensionAnnuityValue
   netWorth: number; // accessibleNet + lockedNet
   /** Annual retirement spending / SWR at this year's prices — the classic FIRE target. */
   fireTarget: number;
