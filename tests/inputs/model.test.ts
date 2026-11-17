@@ -3,14 +3,13 @@
  * and portfolio templates / holdings layout. Nothing here sorts, clamps or drops user data.
  */
 import { describe, expect, it } from 'vitest';
-import { IT_2026, computePayroll, createDefaultPlan, type Plan } from '@/lib/engine';
+import { IT_2026, computePayroll, createDefaultPlan, phaseStartPayroll, type Plan } from '@/lib/engine';
 import {
   NEW_PHASE_YEARS,
   careerTimeline,
   movePhaseDown,
   newPhase,
   phasePayPreview,
-  phasePayrollInputs,
   phaseStartAge,
 } from '@/app/components/inputs/model/career';
 import {
@@ -74,36 +73,15 @@ describe('career phases', () => {
 });
 
 describe('net pay preview', () => {
-  it('is the engine payroll at the start of the phase, with inflation applied', () => {
+  it('is the engine payroll at the start of the phase (phaseStartPayroll), with and without the bonus', () => {
     const p = plan();
-    const prepared = phasePayrollInputs(p, 1);
-    expect(prepared).not.toBeNull();
-    const priceIndex = Math.pow(1 + p.market.inflationPct / 100, 5);
-    expect(prepared!.input.priceIndex).toBeCloseTo(priceIndex, 12);
-    expect(prepared!.input.ral).toBeCloseTo(45000 * priceIndex, 6);
-    expect(prepared!.calendarYear).toBe(2031);
-    // employee 1.5% and employer 2% only with the fund enabled
-    expect(prepared!.input.employeePensionContribution).toBeCloseTo(0.015 * 45000 * priceIndex, 6);
-    expect(prepared!.input.employerPensionContribution).toBeCloseTo(0.02 * 45000 * priceIndex, 6);
+    const engine = phaseStartPayroll(p, 1)!;
     const preview = phasePayPreview(p, 1)!;
-    expect(preview.salary).toEqual(computePayroll(prepared!.salaryOnly, p.taxRules));
+    expect(preview).toMatchObject({ age: 35, calendarYear: 2031, priceIndex: engine.priceIndex, mensilita: 14 });
+    expect(preview.withBonus).toEqual(engine.payroll);
+    expect(preview.salary).toEqual(engine.salaryOnly);
+    expect(preview.salary).toEqual(computePayroll({ ...engine.input, productivityBonus: 0, ordinaryBonus: 0 }, p.taxRules));
     expect(preview.withBonus.netIncome).toBeGreaterThan(preview.salary.netIncome);
-  });
-
-  it('sends nothing to the fund when it is disabled', () => {
-    const p = plan();
-    p.pensionFund.enabled = false;
-    const prepared = phasePayrollInputs(p, 0)!;
-    expect(prepared.input.employeePensionContribution).toBe(0);
-    expect(prepared.input.employerPensionContribution).toBe(0);
-  });
-
-  it('fills the deductible cap with the employer share counted in', () => {
-    const p = plan();
-    p.savingsPolicy.voluntaryPension = 'fillCap';
-    const prepared = phasePayrollInputs(p, 0)!;
-    const total = prepared.input.employeePensionContribution + prepared.input.employerPensionContribution;
-    expect(total).toBeCloseTo(p.taxRules.pensionFund.deductionCap, 6);
   });
 
   it('is unavailable (null) instead of guessing when inputs are invalid', () => {

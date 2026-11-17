@@ -5,7 +5,7 @@
  * mounted once its box has a width, so hidden panels never render a 0×0 chart), and a "Mostra dati" toggle with
  * the accessible table alternative.
  */
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactElement, type ReactNode, type RefObject } from 'react';
 import { ResponsiveContainer } from 'recharts';
 import { Table2 } from 'lucide-react';
 import { useT } from '@/lib/i18n';
@@ -21,7 +21,7 @@ export interface LegendItem {
 }
 
 /** Width of an element, tracked with ResizeObserver (0 while hidden). */
-export function useElementWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
+export function useElementWidth<T extends HTMLElement>(): [RefObject<T | null>, number] {
   const ref = useRef<T>(null);
   const [width, setWidth] = useState(0);
   useEffect(() => {
@@ -78,8 +78,8 @@ export interface ChartFrameProps {
   legend?: readonly LegendItem[];
   /** Plot height in px, axis band included. */
   height: number;
-  /** Renders the chart for the measured width (Recharts elements). */
-  children: (width: number) => ReactNode;
+  /** Renders the chart for the measured width (one Recharts chart element). */
+  children: (width: number) => ReactElement;
   /** Table alternative, shown by "Mostra dati". */
   table: ReactNode;
   /** Notes under the chart. */
@@ -136,7 +136,7 @@ export function ChartFrame({
         <div ref={boxRef} style={{ height }} className="w-full min-w-0">
           {width > 0 ? (
             <ResponsiveContainer width="100%" height={height} initialDimension={{ width, height }}>
-              {children(width) as React.ReactElement}
+              {children(width)}
             </ResponsiveContainer>
           ) : null}
         </div>

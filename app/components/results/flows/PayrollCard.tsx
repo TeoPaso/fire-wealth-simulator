@@ -38,7 +38,7 @@ function LineTable({ title, lines, money }: { title: string; lines: Line[]; mone
       <table className="w-full text-sm">
         <tbody>
           {shown.map((l) => (
-            <tr key={l.key} className={cn(l.total && 'border-t border-slate-700')}>
+            <tr key={l.key} data-line={l.key} className={cn(l.total && 'border-t border-slate-700')}>
               <th scope="row" className={cn('py-1 pr-2 text-left font-normal', l.total ? 'font-semibold text-slate-100' : 'text-slate-300')}>
                 <span aria-hidden="true" className="inline-block w-4 text-slate-400">
                   {l.sign}
@@ -101,7 +101,9 @@ function PayrollDetails({ plan, row, p }: { plan: Plan; row: YearRow; p: Payroll
     <>
       <div className="mt-4 rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-3">
         <p className="text-sm text-slate-300">{t('results.payroll.netAnnual')}</p>
-        <p className="text-3xl font-semibold tracking-tight text-slate-50">{money(p.netIncome)}</p>
+        <p className="text-3xl font-semibold tracking-tight text-slate-50" data-testid="payroll-net">
+          {money(p.netIncome)}
+        </p>
         <p className="mt-1 text-sm text-slate-300">
           {validMensilita
             ? t('results.payroll.netMonthly', { amount: money(p.netIncome / validMensilita), n: String(validMensilita) })

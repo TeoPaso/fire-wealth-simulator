@@ -178,7 +178,7 @@ export function SensitivityTab({ data }: TabProps) {
                 {...AXIS_PROPS}
                 type="category"
                 dataKey={compact ? 'short' : 'label'}
-                width={compact ? 92 : 200}
+                width={compact ? 112 : 200}
                 interval={0}
               />
               <Tooltip content={Content} cursor={{ fill: 'rgba(148, 163, 184, 0.08)' }} isAnimationActive={false} />

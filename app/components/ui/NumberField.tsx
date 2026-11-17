@@ -1,7 +1,7 @@
 'use client';
 
-import { useId, useState, type KeyboardEvent } from 'react';
-import { parseLocaleNumber, useI18n } from '@/lib/i18n';
+import { useId, useState, type FocusEvent, type KeyboardEvent } from 'react';
+import { decimalSeparator, parseLocaleNumber, useI18n } from '@/lib/i18n';
 import { CONTROL_CLASS, FieldLabel, FieldMessages, controlBorder, hasError, type FieldBaseProps, type FieldIssue } from './Field';
 import { cn } from './cn';
 
@@ -31,6 +31,13 @@ function decimalsOf(n: number): number {
   const s = String(n);
   if (s.includes('e-')) return Math.min(10, Number(s.split('e-')[1]) + (s.split('.')[1]?.split('e')[0].length ?? 0));
   return s.split('.')[1]?.length ?? 0;
+}
+
+/** Caret position in the editable text matching `caret` in the formatted text (grouping separators removed). */
+function editCaret(formatted: string, caret: number, decimalSep: string, max: number): number {
+  let n = 0;
+  for (const ch of formatted.slice(0, caret)) if ((ch >= '0' && ch <= '9') || ch === decimalSep || ch === '-') n += 1;
+  return Math.min(n, max);
 }
 
 /**
@@ -85,6 +92,26 @@ export function NumberField({
   const shownDecimals = Math.min(6, Math.max(Number.isFinite(maxDecimals) ? maxDecimals : 0, decimalsOf(value)));
   const formatted = Number.isFinite(value) ? format.num(value, { decimals: shownDecimals, grouping }) : '';
   const editText = Number.isFinite(value) ? format.num(value, { decimals: 10, grouping: false }) : '';
+
+  /**
+   * On focus the formatted text ("1.500") becomes the editable one ("1500"). The swap is done here, synchronously,
+   * keeping the selection: if React replaced the value on re-render, the selection would collapse to the end and
+   * typing after Tab (which selects everything) would append to the old number ("1500" + "2100").
+   */
+  const onFocus = (event: FocusEvent<HTMLInputElement>) => {
+    setFocused(true);
+    if (draft !== null) return;
+    const el = event.currentTarget;
+    if (el.value !== editText) {
+      // Everything selected (Tab) or nothing chosen yet (programmatic focus, select()): select the editable text.
+      const all = el.selectionStart === 0 && (el.selectionEnd === 0 || el.selectionEnd === el.value.length);
+      const caret = editCaret(el.value, el.selectionEnd ?? el.value.length, decimalSeparator(lang), editText.length);
+      el.value = editText;
+      if (all) el.select();
+      else el.setSelectionRange(caret, caret);
+    }
+    setDraft(editText);
+  };
 
   const check = (n: number): string | null => {
     if (integer && !Number.isInteger(n)) return t('common.ui.integerRequired');
@@ -163,51 +190,50 @@ export function NumberField({
   const describedBy = [unit ? unitId : null, description ? descId : null, msgId].filter(Boolean).join(' ');
 
   return (
-    <div className={cn('min-w-0', className)}>
+    <div data-field className={cn('min-w-0', className)}>
       <FieldLabel htmlFor={inputId} label={label} hideLabel={hideLabel} help={help} />
-      <div className="relative">
-        <input
-          id={inputId}
-          name={name}
-          type="text"
-          inputMode={min !== undefined && min >= 0 ? 'decimal' : 'text'}
-          autoComplete="off"
-          spellCheck={false}
-          lang={lang}
-          disabled={disabled}
-          value={draft ?? (focused ? editText : formatted)}
-          aria-invalid={invalid || undefined}
-          aria-describedby={describedBy}
-          onFocus={() => {
-            setFocused(true);
-            if (draft === null) setDraft(editText);
-          }}
-          onBlur={onBlur}
-          onChange={(e) => {
-            setDraft(e.target.value);
-            setShowIncomplete(false);
-            commitText(e.target.value);
-          }}
-          onKeyDown={onKeyDown}
-          className={cn(CONTROL_CLASS, controlBorder(invalid), 'tabular text-right', inputClassName)}
-          style={unit ? { paddingRight: `calc(${unit.length}ch + 1.25rem)` } : undefined}
-        />
-        {unit ? (
-          <span
-            id={unitId}
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-y-0 right-3 flex items-center whitespace-nowrap text-sm text-slate-400"
-          >
-            {unit}
-          </span>
+      <div className="min-w-0">
+        <div className="relative">
+          <input
+            id={inputId}
+            name={name}
+            type="text"
+            inputMode={min !== undefined && min >= 0 ? 'decimal' : 'text'}
+            autoComplete="off"
+            spellCheck={false}
+            lang={lang}
+            disabled={disabled}
+            value={draft ?? (focused ? editText : formatted)}
+            aria-invalid={invalid || undefined}
+            aria-describedby={describedBy}
+            onFocus={onFocus}
+            onBlur={onBlur}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              setShowIncomplete(false);
+              commitText(e.target.value);
+            }}
+            onKeyDown={onKeyDown}
+            className={cn(CONTROL_CLASS, controlBorder(invalid), 'tabular text-right', inputClassName)}
+            style={unit ? { paddingRight: `calc(${unit.length}ch + 1.25rem)` } : undefined}
+          />
+          {unit ? (
+            <span
+              id={unitId}
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 right-3 flex items-center whitespace-nowrap text-sm text-slate-400"
+            >
+              {unit}
+            </span>
+          ) : null}
+        </div>
+        {description ? (
+          <p id={descId} className="mt-1 text-xs text-slate-400">
+            {description}
+          </p>
         ) : null}
+        <FieldMessages id={msgId} issues={messages} />
       </div>
-      {description ? (
-        <p id={descId} className="mt-1 text-xs text-slate-400">
-          {description}
-        </p>
-      ) : null}
-      <FieldMessages id={msgId} issues={messages} />
     </div>
   );
 }

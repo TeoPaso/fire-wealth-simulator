@@ -85,3 +85,28 @@ export function horizontalBarShape(color: string) {
   }
   return HorizontalBar;
 }
+
+/**
+ * Label of a vertical reference line (retirement, fund access, state pension), drawn in the chart's top margin so
+ * it never sits on the data (a peak at the retirement age would otherwise run through it). `side` alternates for
+ * neighbouring markers.
+ */
+export function MarkerLabel({
+  viewBox,
+  value,
+  side,
+  fill,
+}: {
+  viewBox?: { x?: number; y?: number };
+  value: string;
+  side: 'left' | 'right';
+  fill: string;
+}) {
+  const x = viewBox?.x ?? 0;
+  const y = viewBox?.y ?? 0;
+  return (
+    <text x={side === 'right' ? x + 4 : x - 4} y={y - 7} textAnchor={side === 'right' ? 'start' : 'end'} fill={fill} fontSize={11}>
+      {value}
+    </text>
+  );
+}

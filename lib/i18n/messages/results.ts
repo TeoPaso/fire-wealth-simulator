@@ -404,7 +404,7 @@ const en: Record<keyof typeof it, string> = {
   'results.unit.nominal': 'nominal €',
   'results.unit.probability': '% success',
   'results.unit.years': 'years',
-  'results.ageValue': '{age} years',
+  'results.ageValue': 'age {age}',
   'results.yes': 'Yes',
   'results.no': 'No',
   'results.col.age': 'Age',

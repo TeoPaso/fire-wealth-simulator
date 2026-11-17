@@ -8,6 +8,7 @@ import { SERIES_COLORS } from '../../ui';
 import { ChartFrame, isCompact, type LegendItem } from '../charts/ChartFrame';
 import { TooltipBox, tooltipContent } from '../charts/ChartTooltip';
 import { DataTable } from '../charts/DataTable';
+import { MarkerLabel } from '../charts/shapes';
 import { AXIS_PROPS, CHART, ageStep, stepTicks } from '../charts/theme';
 import { fanSeries, type FanPoint } from '../model/overview';
 import type { TabProps } from '../types';
@@ -140,13 +141,13 @@ export function FanChart({ data }: TabProps) {
               x={mc.retirementAge}
               stroke={CHART.ink}
               strokeOpacity={0.55}
-              label={{
-                value: compact ? format.num(mc.retirementAge) : t('results.marker.short.retirement'),
-                position: 'insideTopLeft',
-                fill: CHART.tick,
-                fontSize: 11,
-                offset: 4,
-              }}
+              label={
+                <MarkerLabel
+                  value={compact ? format.num(mc.retirementAge) : t('results.marker.short.retirement')}
+                  side="right"
+                  fill={CHART.tick}
+                />
+              }
             />
           </ComposedChart>
         );

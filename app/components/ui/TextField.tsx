@@ -33,24 +33,26 @@ export function TextField({
   const msgId = `${inputId}-msg`;
   const invalid = hasError(issues);
   return (
-    <div className={cn('min-w-0', className)}>
+    <div data-field className={cn('min-w-0', className)}>
       <FieldLabel htmlFor={inputId} label={label} hideLabel={hideLabel} help={help} />
-      <input
-        id={inputId}
-        type={type}
-        value={value ?? ''}
-        onChange={(e) => onChange(e.target.value)}
-        aria-invalid={invalid || undefined}
-        aria-describedby={[description ? descId : null, msgId].filter(Boolean).join(' ')}
-        className={cn(CONTROL_CLASS, controlBorder(invalid), inputClassName)}
-        {...rest}
-      />
-      {description ? (
-        <p id={descId} className="mt-1 text-xs text-slate-400">
-          {description}
-        </p>
-      ) : null}
-      <FieldMessages id={msgId} issues={issues} />
+      <div className="min-w-0">
+        <input
+          id={inputId}
+          type={type}
+          value={value ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+          aria-invalid={invalid || undefined}
+          aria-describedby={[description ? descId : null, msgId].filter(Boolean).join(' ')}
+          className={cn(CONTROL_CLASS, controlBorder(invalid), inputClassName)}
+          {...rest}
+        />
+        {description ? (
+          <p id={descId} className="mt-1 text-xs text-slate-400">
+            {description}
+          </p>
+        ) : null}
+        <FieldMessages id={msgId} issues={issues} />
+      </div>
     </div>
   );
 }

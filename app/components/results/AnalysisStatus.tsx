@@ -39,7 +39,14 @@ export function AnalysisStatus({ analysis }: { analysis: AnalysisView }) {
     content = null;
   }
   return (
-    <p role="status" aria-live="polite" className="inline-flex min-h-5 items-center gap-1.5 text-xs text-slate-400" data-testid="analysis-status" data-state={analysis.running ? 'running' : analysis.available ? 'done' : 'idle'}>
+    <p
+      role="status"
+      aria-live="polite"
+      className="inline-flex min-h-5 items-center gap-1.5 text-xs text-slate-400"
+      data-testid="analysis-status"
+      data-state={analysis.running ? 'running' : analysis.available ? 'done' : 'idle'}
+      data-engine={analysis.engine ?? undefined}
+    >
       {content}
     </p>
   );

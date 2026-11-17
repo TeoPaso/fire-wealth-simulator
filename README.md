@@ -246,9 +246,14 @@ La suite (oltre 200 test con Vitest) copre:
 - **migrazione dalla v1**, **salvataggio** (storage corrotto, piani non validi salvati e ricaricati intatti,
   backup) e **traduzioni** (stesse chiavi in italiano e inglese, nessuna chiave mancante nella UI).
 
-`npm run e2e` esegue uno smoke test nel browser sulla build di produzione: caricamento senza errori, età FI
-visibile, interfaccia inglese senza testi italiani, nessuno scorrimento orizzontale a 375 e 1440 px, modifica e
-ricaricamento di un dato, registrazione del service worker. Richiede Playwright.
+`npm run e2e` esegue uno smoke test nel browser sulla build di produzione (lancia prima `npm run build`): serve
+`out/` con un piccolo server locale e controlla caricamento senza errori in console, età FI visibile, Monte Carlo
+nel Web Worker, esportazione JSON, numeri mostrati uguali a quelli del motore (età FI, numero FIRE, patrimonio al
+ritiro, busta paga = `computePayroll`, valori reali = nominali / indice dei prezzi), modifica delle spese che
+cambia l'età FI e resta dopo il ricaricamento, service worker attivo e funzionamento offline, interfaccia inglese
+senza parole italiane, nessuno scorrimento orizzontale a 375 e 1440 px. Richiede il pacchetto `playwright` con
+Chromium e Node ≥ 22.18 (legge il motore TypeScript direttamente dai sorgenti). Con `E2E_SHOTS=<cartella>`
+salva anche gli screenshot.
 
 ## Privacy
 

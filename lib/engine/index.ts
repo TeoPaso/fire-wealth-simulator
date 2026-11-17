@@ -11,6 +11,8 @@ export { exitTaxRatePct, yieldTaxRatePct } from './tax/pensionFund';
 export { validatePlan, hasErrors, ISSUE_CODES, VALIDATION_LIMITS } from './validate';
 export type { IssueCode } from './validate';
 export { runPlan, fireNumberToday } from './fire';
+export { phaseStartPayroll } from './payrollPreview';
+export type { PhaseStartPayroll } from './payrollPreview';
 export { runMonteCarlo } from './montecarlo';
 export type { MonteCarloOptions } from './montecarlo';
 export { runSensitivity } from './sensitivity';

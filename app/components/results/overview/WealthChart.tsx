@@ -11,6 +11,7 @@ import { SERIES_COLORS } from '../../ui';
 import { ChartFrame, ChartLegend, isCompact, type LegendItem } from '../charts/ChartFrame';
 import { TooltipBox, tooltipContent } from '../charts/ChartTooltip';
 import { DataTable } from '../charts/DataTable';
+import { MarkerLabel } from '../charts/shapes';
 import { AXIS_PROPS, CHART, ageStep, stepTicks } from '../charts/theme';
 import { ageMarkers, wealthSeries, type MarkerKind, type WealthPoint } from '../model/overview';
 import { unitKey } from '../model/values';
@@ -151,13 +152,13 @@ export function WealthChart({ data }: TabProps) {
                 stroke={CHART.ink}
                 strokeOpacity={0.55}
                 strokeWidth={1}
-                label={{
-                  value: compact ? format.num(m.age) : markerShort(m.kinds),
-                  position: i % 2 === 0 ? 'insideTopLeft' : 'insideTopRight',
-                  fill: CHART.tick,
-                  fontSize: 11,
-                  offset: 4,
-                }}
+                label={
+                  <MarkerLabel
+                    value={compact ? format.num(m.age) : markerShort(m.kinds)}
+                    side={i % 2 === 0 ? 'right' : 'left'}
+                    fill={CHART.tick}
+                  />
+                }
               />
             ))}
           </AreaChart>

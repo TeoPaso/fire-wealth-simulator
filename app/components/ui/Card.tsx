@@ -1,4 +1,4 @@
-import type { ComponentPropsWithRef, ReactNode } from 'react';
+import type { ComponentPropsWithRef } from 'react';
 import { cn } from './cn';
 
 export interface CardProps extends ComponentPropsWithRef<'div'> {
@@ -21,30 +21,5 @@ export function Card({ padding = 'md', as: Tag = 'div', className, ...rest }: Ca
       )}
       {...rest}
     />
-  );
-}
-
-/** Optional card header: title, optional description and trailing actions. */
-export function CardHeader({
-  title,
-  description,
-  actions,
-  className,
-  titleAs: Title = 'h2',
-}: {
-  title: ReactNode;
-  description?: ReactNode;
-  actions?: ReactNode;
-  className?: string;
-  titleAs?: 'h2' | 'h3' | 'h4';
-}) {
-  return (
-    <div className={cn('mb-4 flex items-start justify-between gap-3', className)}>
-      <div className="min-w-0">
-        <Title className="text-base font-semibold text-slate-100">{title}</Title>
-        {description ? <p className="mt-1 text-sm text-slate-400">{description}</p> : null}
-      </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
-    </div>
   );
 }

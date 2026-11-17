@@ -303,6 +303,8 @@ export function pensionFundAccess(prep: PreparedPlan, retirementAge: number): Pe
 /** Everything about a working year that does not depend on the retirement age (only on the path). */
 export interface WorkYear {
   phaseIndex: number;
+  /** Payroll input of the year, exactly as passed to computePayroll (nominal €). */
+  input: PayrollInput;
   ral: number;
   bonusGross: number;
   productivityBonus: number;
@@ -398,6 +400,7 @@ export function workYear(prep: PreparedPlan, cache: WorkCache, t: number): WorkY
   const inpsShare = payroll.gross > 0 ? payroll.inps / payroll.gross : 0;
   const entry: WorkYear = {
     phaseIndex: ph.index,
+    input,
     ral,
     bonusGross: bonus,
     productivityBonus,

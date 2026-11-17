@@ -81,23 +81,48 @@ export function FieldGroup({
   const { fieldIssues, fieldId } = usePlanEditor();
   const id = fieldId(path);
   return (
-    <div id={id} tabIndex={-1} role="group" aria-labelledby={`${id}-label`} className={cn('min-w-0 focus:outline-none', className)}>
+    <div
+      id={id}
+      data-field
+      tabIndex={-1}
+      role="group"
+      aria-labelledby={`${id}-label`}
+      className={cn('min-w-0 focus:outline-none', className)}
+    >
       <div className="mb-1.5 flex min-h-6 items-center gap-1">
         <span id={`${id}-label`} className="text-sm font-medium text-slate-200">
           {label}
         </span>
         {help ? <HelpTooltip content={help} label={label} /> : null}
       </div>
-      {children}
-      {description ? <p className="mt-1 text-xs text-slate-400">{description}</p> : null}
-      <FieldMessages id={`${id}-msg`} issues={fieldIssues(path)} />
+      <div className="min-w-0">
+        {children}
+        {description ? <p className="mt-1 text-xs text-slate-400">{description}</p> : null}
+        <FieldMessages id={`${id}-msg`} issues={fieldIssues(path)} />
+      </div>
     </div>
   );
 }
 
-/** Responsive grid of fields: one column on phones, two from 640px. */
+/**
+ * Responsive grid of fields: one column on phones, two from 640px. In two columns every child spans two rows and
+ * fields ([data-field]: label + body) use them as a subgrid, so the inputs of a row line up even when only one of
+ * the two labels wraps onto a second line.
+ */
 export function FieldGrid({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn('grid grid-cols-1 gap-x-3 gap-y-4 sm:grid-cols-2', className)}>{children}</div>;
+  return (
+    <div
+      className={cn(
+        'grid grid-cols-1 gap-x-3 gap-y-4 sm:grid-cols-2',
+        'sm:[&>*]:row-span-2 sm:[&>[data-field]]:grid sm:[&>[data-field]]:grid-rows-subgrid sm:[&>[data-field]]:gap-y-0',
+        // The body is always the second row, even when the label is visually hidden (sr-only = out of flow).
+        'sm:[&>[data-field]>:last-child]:row-start-2',
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
 }
 
 /** Sub-heading inside a section, with optional help. */

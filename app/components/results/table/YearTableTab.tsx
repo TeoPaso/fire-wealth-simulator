@@ -86,7 +86,7 @@ export function YearTableTab({ data }: TabProps) {
                   key={g.group}
                   colSpan={g.span}
                   scope="colgroup"
-                  className="sticky top-0 z-20 h-8 border-b border-l border-slate-800 bg-slate-900 px-2.5 text-center font-semibold text-slate-200"
+                  className="sticky top-0 z-20 h-8 border-b border-l border-slate-800 bg-slate-900 px-2.5 text-left font-semibold text-slate-200"
                 >
                   {t(groupLabelKey(g.group))}
                 </th>
@@ -112,7 +112,7 @@ export function YearTableTab({ data }: TabProps) {
               const firstRetired = row.age === retirementAge && row.status === 'retired';
               const failed = row.shortfall > 0.5;
               return (
-                <tr key={row.t} className={cn('group', failed && 'bg-rose-400/10')}>
+                <tr key={row.t} data-age={row.age} className={cn('group', failed && 'bg-rose-400/10')}>
                   <th
                     scope="row"
                     className={cn(
@@ -130,6 +130,7 @@ export function YearTableTab({ data }: TabProps) {
                     return (
                       <td
                         key={c.id}
+                        data-col={c.id}
                         className={cn(
                           'whitespace-nowrap px-2.5 py-1.5 text-right group-hover:bg-slate-800/40',
                           firstRetired ? 'border-t-2 border-t-cyan-400/70' : 'border-t border-t-slate-800/70',

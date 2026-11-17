@@ -3,14 +3,7 @@
  *
  * The phase list edits never sort, clamp or "repair" ages: invalid orders are reported by validatePlan.
  */
-import {
-  computePayroll,
-  createDefaultPlan,
-  type CareerPhase,
-  type PayrollBreakdown,
-  type PayrollInput,
-  type Plan,
-} from '@/lib/engine';
+import { createDefaultPlan, phaseStartPayroll, type CareerPhase, type PayrollBreakdown, type Plan } from '@/lib/engine';
 
 const num = (x: unknown): number => (typeof x === 'number' && Number.isFinite(x) ? x : NaN);
 
@@ -108,100 +101,19 @@ export interface PhasePayPreview {
 }
 
 /**
- * Payroll input for the first year of a phase, mirroring docs/SPEC.md §5.1 (salary at phase start = RAL today ×
- * price index, pension contributions only with the fund enabled, employer share only if the employee pays,
- * voluntary contribution policy, bonus regime). Inflation is the plan's deterministic rate.
- *
- * NOTE: this is glue that prepares an engine call. If the engine exposes a helper for the payroll input of a year,
- * this function should delegate to it.
+ * Net pay at the start of a phase, straight from the engine (phaseStartPayroll runs the simulation's own
+ * working-year step), or null when the inputs needed for it are not valid yet.
  */
-export function phasePayrollInputs(
-  plan: Plan,
-  index: number,
-): { input: PayrollInput; salaryOnly: PayrollInput; age: number; calendarYear: number; mensilita: number; bonusOutsidePayroll: PhasePayPreview['bonusOutsidePayroll'] } | null {
-  const phase = plan.career?.[index];
-  if (!phase || typeof phase !== 'object') return null;
-  const currentAge = num(plan.profile?.currentAge);
-  const age = phaseStartAge(plan, index);
-  const startYear = num(plan.profile?.startYear);
-  const ralToday = num(phase.ralToday);
-  if (![currentAge, age, startYear, ralToday].every(Number.isFinite) || age < currentAge || ralToday < 0) return null;
-
-  const t = age - currentAge;
-  const inflation = num(plan.market?.inflationPct);
-  const priceIndex = Math.pow(1 + (Number.isFinite(inflation) ? inflation : 0) / 100, t);
-  if (!(priceIndex > 0) || !Number.isFinite(priceIndex)) return null;
-
-  const pct = (x: unknown) => {
-    const v = num(x);
-    return Number.isFinite(v) && v > 0 ? v / 100 : 0;
-  };
-  const ral = ralToday * priceIndex;
-  const bonusGross = Math.max(0, Number.isFinite(num(phase.bonusGrossToday)) ? num(phase.bonusGrossToday) : 0) * priceIndex;
-  const fundEnabled = plan.pensionFund?.enabled === true;
-
-  let employee = 0;
-  let employer = 0;
-  if (fundEnabled) {
-    const employeeBase = ral * pct(phase.employeePensionPct);
-    employer = employeeBase > 0 ? ral * pct(phase.employerPensionPct) : 0;
-    let voluntary = 0;
-    const policy = plan.savingsPolicy?.voluntaryPension;
-    if (policy === 'fillCap') {
-      const cap = num(plan.taxRules?.pensionFund?.deductionCap);
-      voluntary = Number.isFinite(cap) ? Math.max(0, cap - employer - employeeBase) : 0;
-    } else if (policy === 'fixed') {
-      const fixed = num(plan.savingsPolicy?.voluntaryPensionFixedToday);
-      voluntary = Number.isFinite(fixed) && fixed > 0 ? fixed * priceIndex : 0;
-    }
-    employee = employeeBase + voluntary;
-  }
-
-  let ordinaryBonus = 0;
-  let productivityBonus = 0;
-  let bonusOutsidePayroll: PhasePayPreview['bonusOutsidePayroll'] = null;
-  const regime = phase.bonusRegime;
-  if (regime === 'ordinary') ordinaryBonus = bonusGross;
-  else if (regime === 'pensionFund' && fundEnabled) bonusOutsidePayroll = bonusGross > 0 ? 'pensionFund' : null;
-  else if (regime === 'welfare') bonusOutsidePayroll = bonusGross > 0 ? 'welfare' : null;
-  else productivityBonus = bonusGross; // 'productivity', or 'pensionFund' with the fund disabled (SPEC §5.1)
-
-  const calendarYear = startYear + t;
-  const salaryOnly: PayrollInput = {
-    ral,
-    ordinaryBonus: 0,
-    productivityBonus: 0,
-    // Prior-year employment income is approximated with this year's gross (same phase, same pay).
-    priorYearIncome: ral + ordinaryBonus + productivityBonus,
-    employeePensionContribution: employee,
-    employerPensionContribution: employer,
-    calendarYear,
-    priceIndex,
-  };
-  const input: PayrollInput = { ...salaryOnly, ordinaryBonus, productivityBonus };
-  const mensilita = num(phase.mensilita);
-  return { input, salaryOnly, age, calendarYear, mensilita, bonusOutsidePayroll };
-}
-
-/** Engine payroll at the start of a phase, or null when the inputs needed for it are not valid yet. */
 export function phasePayPreview(plan: Plan, index: number): PhasePayPreview | null {
-  const prepared = phasePayrollInputs(plan, index);
-  if (!prepared || !plan.taxRules) return null;
-  try {
-    const salary = computePayroll(prepared.salaryOnly, plan.taxRules);
-    const hasBonus = prepared.input.ordinaryBonus > 0 || prepared.input.productivityBonus > 0;
-    const withBonus = hasBonus ? computePayroll(prepared.input, plan.taxRules) : salary;
-    if (![salary.netIncome, withBonus.netIncome].every(Number.isFinite)) return null;
-    return {
-      age: prepared.age,
-      calendarYear: prepared.calendarYear,
-      priceIndex: prepared.input.priceIndex,
-      mensilita: prepared.mensilita,
-      salary,
-      withBonus,
-      bonusOutsidePayroll: prepared.bonusOutsidePayroll,
-    };
-  } catch {
-    return null;
-  }
+  const year = phaseStartPayroll(plan, index);
+  if (!year) return null;
+  return {
+    age: year.age,
+    calendarYear: year.calendarYear,
+    priceIndex: year.priceIndex,
+    mensilita: num(plan.career[index]?.mensilita),
+    salary: year.salaryOnly,
+    withBonus: year.payroll,
+    bonusOutsidePayroll: year.bonusOutsidePayroll,
+  };
 }
