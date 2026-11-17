@@ -1,6 +1,6 @@
 'use client';
 
-import type { RetirementMode, WithdrawalStrategy } from '@/lib/engine';
+import { fireNumberToday, type RetirementMode, type WithdrawalStrategy } from '@/lib/engine';
 import { useFormat, useT, useTranslatedOptions } from '@/lib/i18n';
 import { SegmentedControl } from '../../ui';
 import { numOr, usePlanEditor } from '../editor';
@@ -20,6 +20,8 @@ export function WithdrawalSection() {
   const w = plan.withdrawal;
   const strategyOptions = useTranslatedOptions(STRATEGY_OPTIONS);
   const swr = numOr(w.swrPct);
+  // Classic FIRE number from the engine (annual retirement spending / SWR), shown as a reference while editing.
+  const fireNumber = swr > 0 ? fireNumberToday(plan) : NaN;
 
   return (
     <div className="space-y-4">
@@ -71,7 +73,11 @@ export function WithdrawalSection() {
           path="withdrawal.swrPct"
           label={t('inputs.withdrawal.swrPct')}
           help={t('inputs.withdrawal.swrPctHelp')}
-          description={swr > 0 ? t('inputs.withdrawal.swrPctDesc', { multiple: format.num(100 / swr, { decimals: 1 }) }) : undefined}
+          description={
+            swr > 0 && Number.isFinite(fireNumber)
+              ? t('inputs.withdrawal.swrPctDesc', { amount: format.eur(fireNumber), multiple: format.num(100 / swr, { decimals: 1 }) })
+              : undefined
+          }
           unit={t('common.unit.pct')}
           value={swr}
           min={0}

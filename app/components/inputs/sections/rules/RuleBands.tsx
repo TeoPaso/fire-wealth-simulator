@@ -59,7 +59,7 @@ export function RuleBands({ path }: { path: string }) {
   return (
     <FieldGroup path={full} label={t(ruleLabelKey(path))} help={t(ruleHelpKey(path))}>
       {bands.length > 0 ? (
-        <div aria-hidden="true" className="mb-1 grid grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_2rem] gap-2 text-xs text-slate-400">
+        <div aria-hidden="true" className="mb-1 grid grid-cols-[1.25rem_minmax(0,3fr)_minmax(0,2fr)_2rem] gap-2 px-[calc(0.5rem+1px)] text-xs text-slate-400">
           <span>#</span>
           <span>{t('inputs.rules.band.upToColumn')}</span>
           <span>{t('inputs.rules.band.rateColumn')}</span>
@@ -96,7 +96,7 @@ function BandRow({ path, index, band, isLast }: { path: string; index: number; b
 
   return (
     <li className="rounded-lg border border-slate-800 bg-slate-950/20 p-2">
-      <div className="grid grid-cols-[1.75rem_minmax(0,1fr)_minmax(0,1fr)_2rem] items-start gap-2">
+      <div className="grid grid-cols-[1.25rem_minmax(0,3fr)_minmax(0,2fr)_2rem] items-start gap-2">
         <span aria-hidden="true" className="pt-2.5 text-center text-xs font-semibold text-slate-400">
           {n}
         </span>
@@ -104,6 +104,7 @@ function BandRow({ path, index, band, isLast }: { path: string; index: number; b
           path={`${full}.upTo`}
           label={t('inputs.rules.band.upTo', { n })}
           hideLabel
+          inputClassName="pl-2"
           unit={t('common.unit.eur')}
           value={unlimited ? NaN : numOr(band?.upTo)}
           min={0}
@@ -120,6 +121,7 @@ function BandRow({ path, index, band, isLast }: { path: string; index: number; b
           path={`${full}.ratePct`}
           label={t('inputs.rules.band.rate', { n })}
           hideLabel
+          inputClassName="pl-2"
           unit={t('common.unit.pct')}
           value={numOr(band?.ratePct)}
           min={0}
@@ -146,7 +148,7 @@ function BandRow({ path, index, band, isLast }: { path: string; index: number; b
       </div>
       {isLast || unlimited ? (
         <Switch
-          className="mt-2 pl-9"
+          className="mt-2 pl-7"
           label={t('inputs.rules.band.noLimit')}
           checked={unlimited}
           onChange={(on) =>
@@ -159,7 +161,7 @@ function BandRow({ path, index, band, isLast }: { path: string; index: number; b
           }
         />
       ) : null}
-      <PathIssues path={full} className="mt-1 pl-9" />
+      <PathIssues path={full} className="mt-1 pl-7" />
     </li>
   );
 }

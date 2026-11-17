@@ -241,6 +241,21 @@ export function PensionFundSection() {
               {t('inputs.pf.useRitaAge', { age: format.num(ritaFrom) })}
             </Button>
           ) : null}
+          {/* Same the other way round: back to the ordinary benefit with an early (RITA) age, offer the old-age age. */}
+          {enabled && ordinaryBenefit && Number.isFinite(oldAge) && numOr(pf.accessAge) < oldAge ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="mt-1 h-7 px-2 text-xs text-cyan-300"
+              onClick={() =>
+                update((d) => {
+                  d.pensionFund.accessAge = oldAge;
+                })
+              }
+            >
+              {t('inputs.pf.useOldAge', { age: format.num(oldAge) })}
+            </Button>
+          ) : null}
         </div>
         <PlanNumber
           path="pensionFund.capitalSharePct"

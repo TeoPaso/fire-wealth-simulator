@@ -93,9 +93,9 @@ const it = {
   'inputs.career.bonusRegime.pensionFund': 'Versato al fondo pensione',
   'inputs.career.bonusRegime.welfare': 'Welfare aziendale (beni e servizi)',
   'inputs.career.bonusRegimeHelp':
-    'Premio di produttività: fino a {cap} € (al netto dei contributi INPS) paga un’imposta sostitutiva del {rate}% invece dell’IRPEF, se l’anno prima hai guadagnato al massimo {limit} €; dopo il {year} si ipotizza il {afterRate}% fino a {afterCap} €. Al fondo pensione: niente tasse né contributi ora e nemmeno all’uscita. Welfare: beni e servizi esentasse che riducono le tue spese. Tassato come stipendio: si somma alla RAL.',
+    'Premio di produttività: fino a {cap} (al netto dei contributi INPS) paga un’imposta sostitutiva del {rate}% invece dell’IRPEF, se l’anno prima hai guadagnato al massimo {limit}; dopo il {year} si ipotizza il {afterRate}% fino a {afterCap}. Al fondo pensione: niente tasse né contributi ora e nemmeno all’uscita. Welfare: beni e servizi esentasse che riducono le tue spese. Tassato come stipendio: si somma alla RAL.',
   'inputs.career.bonusRegimeHelpNoExpiry':
-    'Premio di produttività: fino a {cap} € (al netto dei contributi INPS) paga un’imposta sostitutiva del {rate}% invece dell’IRPEF, se l’anno prima hai guadagnato al massimo {limit} €. Al fondo pensione: niente tasse né contributi ora e nemmeno all’uscita. Welfare: beni e servizi esentasse che riducono le tue spese. Tassato come stipendio: si somma alla RAL.',
+    'Premio di produttività: fino a {cap} (al netto dei contributi INPS) paga un’imposta sostitutiva del {rate}% invece dell’IRPEF, se l’anno prima hai guadagnato al massimo {limit}. Al fondo pensione: niente tasse né contributi ora e nemmeno all’uscita. Welfare: beni e servizi esentasse che riducono le tue spese. Tassato come stipendio: si somma alla RAL.',
   'inputs.career.employeePensionPct': 'Tuo contributo al fondo',
   'inputs.career.employeePensionPctHelp':
     'La percentuale della RAL che versi al fondo pensione, trattenuta in busta paga. Spesso basta il minimo del contratto (1–2%) per ottenere anche il contributo del datore. È deducibile: riduce l’IRPEF che paghi.',
@@ -277,7 +277,7 @@ const it = {
 
   /* ───────────── Fondo pensione e TFR ───────────── */
   'inputs.pf.intro':
-    'Il fondo pensione è un investimento di lungo periodo con vantaggi fiscali: i contributi si deducono dal reddito fino a {cap} € l’anno (contando anche quelli del datore di lavoro, il TFR no), i rendimenti pagano meno tasse e all’uscita l’aliquota è bassa. In cambio i soldi restano bloccati fino alla pensione, alla RITA o al riscatto.',
+    'Il fondo pensione è un investimento di lungo periodo con vantaggi fiscali: i contributi si deducono dal reddito fino a {cap} l’anno (contando anche quelli del datore di lavoro, il TFR no), i rendimenti pagano meno tasse e all’uscita l’aliquota è bassa. In cambio i soldi restano bloccati fino alla pensione, alla RITA o al riscatto.',
   'inputs.pf.enabled': 'Uso un fondo pensione',
   'inputs.pf.enabledDesc': 'Contributi, premio e TFR scelti nelle fasi della carriera vanno al fondo.',
   'inputs.pf.disabledDesc': 'Nessun nuovo versamento al fondo: il TFR resta in azienda.',
@@ -321,6 +321,7 @@ const it = {
   'inputs.pf.accessAgeRita': 'RITA possibile da {from} anni ({fromUnemployed} se disoccupato da più di 24 mesi) fino a {oldAge}.',
   'inputs.pf.accessAgeRedemption': 'Non usata: il riscatto arriva {after} anni dopo il ritiro.',
   'inputs.pf.useRitaAge': 'Usa {age} anni (prima età RITA)',
+  'inputs.pf.useOldAge': 'Usa {age} anni (età della pensione di vecchiaia)',
   'inputs.pf.capitalSharePct': 'Quota in capitale',
   'inputs.pf.capitalSharePctHelp':
     'La parte del fondo che ritiri subito in un’unica soluzione alla pensione. Per legge al massimo il {max}% (il 100% solo se la rendita sarebbe molto piccola); il resto diventa una rendita a vita.',
@@ -333,13 +334,13 @@ const it = {
     'Tasse all’uscita: {max}% sulla parte tassabile, ridotto di {step} punti per ogni anno di iscrizione oltre il {after}°, fino al {min}%. Molto meno dell’IRPEF che pagheresti sullo stesso stipendio.',
   'inputs.pf.voluntaryTitle': 'Contributi volontari',
   'inputs.pf.voluntaryHelp':
-    'Puoi versare più del minimo in busta paga. Conviene fino al limite di deducibilità di {cap} € l’anno, che comprende i tuoi contributi E quelli del datore di lavoro (il TFR no): ogni euro sotto il limite ti fa risparmiare IRPEF all’aliquota marginale.',
+    'Puoi versare più del minimo in busta paga. Conviene fino al limite di deducibilità di {cap} l’anno, che comprende i tuoi contributi E quelli del datore di lavoro (il TFR no): ogni euro sotto il limite ti fa risparmiare IRPEF all’aliquota marginale.',
   'inputs.pf.voluntaryPension': 'Versamento extra',
   'inputs.pf.voluntary.none': 'Nessuno',
   'inputs.pf.voluntary.fillCap': 'Fino al limite deducibile',
   'inputs.pf.voluntary.fixed': 'Importo fisso annuo',
   'inputs.pf.voluntary.noneDesc': 'Versi solo la percentuale indicata in ogni fase.',
-  'inputs.pf.voluntary.fillCapDesc': 'Ogni anno aggiungi quanto serve per arrivare a {cap} € tra contributi tuoi e del datore.',
+  'inputs.pf.voluntary.fillCapDesc': 'Ogni anno aggiungi quanto serve per arrivare a {cap} tra contributi tuoi e del datore.',
   'inputs.pf.voluntary.fixedDesc': 'Ogni anno aggiungi l’importo indicato qui accanto, in euro di oggi.',
   'inputs.pf.voluntaryPensionFixedToday': 'Importo extra annuo',
   'inputs.pf.voluntaryPensionFixedTodayHelp': 'Versamento volontario aggiuntivo ogni anno, in euro di oggi, trattenuto in busta paga.',
@@ -392,7 +393,7 @@ const it = {
   'inputs.withdrawal.swrPct': 'Tasso di prelievo sicuro (SWR)',
   'inputs.withdrawal.swrPctHelp':
     'La percentuale del patrimonio che puoi prelevare il primo anno (poi adeguata all’inflazione) con buone probabilità di non finire i soldi. La famosa «regola del 4%» viene da studi USA su 30 anni: per un ritiro lungo e con le tasse italiane il 3–3,5% è più prudente. Serve a calcolare il numero FIRE di riferimento: spese annue diviso SWR.',
-  'inputs.withdrawal.swrPctDesc': 'Numero FIRE = spese annue × {multiple}.',
+  'inputs.withdrawal.swrPctDesc': 'Numero FIRE: {amount} in euro di oggi (spese annue in pensione × {multiple}).',
   'inputs.withdrawal.strategyLabel': 'Strategia di prelievo',
   'inputs.withdrawal.strategyHelp':
     'Spese costanti: prelevi ogni anno quanto ti serve, adeguato all’inflazione. Guardrail: negli anni in cui prelevi troppo rispetto al patrimonio riduci le spese, per proteggere il piano nei mercati difficili.',
@@ -797,9 +798,9 @@ const en: Record<keyof typeof it, string> = {
   'inputs.career.bonusRegime.pensionFund': 'Paid into the pension fund',
   'inputs.career.bonusRegime.welfare': 'Company welfare (goods and services)',
   'inputs.career.bonusRegimeHelp':
-    'Productivity bonus: up to €{cap} (net of INPS contributions) pays a {rate}% substitute tax instead of income tax, if last year you earned at most €{limit}; after {year} we assume {afterRate}% up to €{afterCap}. Pension fund: no tax or contributions now, and none at exit. Welfare: tax-free goods and services that lower your expenses. Taxed like salary: added to the gross salary.',
+    'Productivity bonus: up to {cap} (net of INPS contributions) pays a {rate}% substitute tax instead of income tax, if last year you earned at most {limit}; after {year} we assume {afterRate}% up to {afterCap}. Pension fund: no tax or contributions now, and none at exit. Welfare: tax-free goods and services that lower your expenses. Taxed like salary: added to the gross salary.',
   'inputs.career.bonusRegimeHelpNoExpiry':
-    'Productivity bonus: up to €{cap} (net of INPS contributions) pays a {rate}% substitute tax instead of income tax, if last year you earned at most €{limit}. Pension fund: no tax or contributions now, and none at exit. Welfare: tax-free goods and services that lower your expenses. Taxed like salary: added to the gross salary.',
+    'Productivity bonus: up to {cap} (net of INPS contributions) pays a {rate}% substitute tax instead of income tax, if last year you earned at most {limit}. Pension fund: no tax or contributions now, and none at exit. Welfare: tax-free goods and services that lower your expenses. Taxed like salary: added to the gross salary.',
   'inputs.career.employeePensionPct': 'Your fund contribution',
   'inputs.career.employeePensionPctHelp':
     'The share of your gross salary you pay into the pension fund, withheld from your pay. Often the contract minimum (1–2%) is enough to also get the employer’s contribution. It is deductible: it lowers your income tax.',
@@ -979,7 +980,7 @@ const en: Record<keyof typeof it, string> = {
 
   /* ───────────── Pension fund and TFR ───────────── */
   'inputs.pf.intro':
-    'A pension fund is a long-term investment with tax advantages: contributions are deductible from income up to €{cap} a year (employer contributions included, TFR excluded), returns pay less tax and the exit tax rate is low. In exchange the money stays locked until retirement, RITA or a redemption.',
+    'A pension fund is a long-term investment with tax advantages: contributions are deductible from income up to {cap} a year (employer contributions included, TFR excluded), returns pay less tax and the exit tax rate is low. In exchange the money stays locked until retirement, RITA or a redemption.',
   'inputs.pf.enabled': 'I use a pension fund',
   'inputs.pf.enabledDesc': 'Contributions, bonus and TFR chosen in the career phases go to the fund.',
   'inputs.pf.disabledDesc': 'No new payments into the fund: the TFR stays with the company.',
@@ -1023,6 +1024,7 @@ const en: Record<keyof typeof it, string> = {
   'inputs.pf.accessAgeRita': 'RITA possible from {from} ({fromUnemployed} if unemployed for more than 24 months) until {oldAge}.',
   'inputs.pf.accessAgeRedemption': 'Not used: the redemption comes {after} years after you retire.',
   'inputs.pf.useRitaAge': 'Use age {age} (earliest RITA age)',
+  'inputs.pf.useOldAge': 'Use age {age} (old-age pension age)',
   'inputs.pf.capitalSharePct': 'Lump-sum share',
   'inputs.pf.capitalSharePctHelp':
     'The part of the fund you take at once at retirement. By law at most {max}% (100% only if the annuity would be very small); the rest becomes a lifetime annuity.',
@@ -1035,13 +1037,13 @@ const en: Record<keyof typeof it, string> = {
     'Exit tax: {max}% on the taxable part, reduced by {step} points for each year of membership beyond the {after}th, down to {min}%. Much less than the income tax you would pay on the same salary.',
   'inputs.pf.voluntaryTitle': 'Voluntary contributions',
   'inputs.pf.voluntaryHelp':
-    'You can pay in more than the minimum through your payslip. It pays off up to the deduction limit of €{cap} a year, which includes your contributions AND your employer’s (not the TFR): every euro below the limit saves income tax at your marginal rate.',
+    'You can pay in more than the minimum through your payslip. It pays off up to the deduction limit of {cap} a year, which includes your contributions AND your employer’s (not the TFR): every euro below the limit saves income tax at your marginal rate.',
   'inputs.pf.voluntaryPension': 'Extra contribution',
   'inputs.pf.voluntary.none': 'None',
   'inputs.pf.voluntary.fillCap': 'Up to the deductible limit',
   'inputs.pf.voluntary.fixed': 'Fixed yearly amount',
   'inputs.pf.voluntary.noneDesc': 'You only pay the percentage set in each phase.',
-  'inputs.pf.voluntary.fillCapDesc': 'Every year you add what is needed to reach €{cap} between your and your employer’s contributions.',
+  'inputs.pf.voluntary.fillCapDesc': 'Every year you add what is needed to reach {cap} between your and your employer’s contributions.',
   'inputs.pf.voluntary.fixedDesc': 'Every year you add the amount entered next to this, in today’s euros.',
   'inputs.pf.voluntaryPensionFixedToday': 'Extra yearly amount',
   'inputs.pf.voluntaryPensionFixedTodayHelp': 'Additional voluntary payment each year, in today’s euros, withheld from your pay.',
@@ -1093,7 +1095,7 @@ const en: Record<keyof typeof it, string> = {
   'inputs.withdrawal.swrPct': 'Safe withdrawal rate (SWR)',
   'inputs.withdrawal.swrPctHelp':
     'The percentage of your wealth you can withdraw in the first year (then adjusted for inflation) with a good chance of not running out. The famous “4% rule” comes from US studies over 30 years: for a long retirement and with Italian taxes 3–3.5% is more prudent. It sets the reference FIRE number: annual expenses divided by the SWR.',
-  'inputs.withdrawal.swrPctDesc': 'FIRE number = annual expenses × {multiple}.',
+  'inputs.withdrawal.swrPctDesc': 'FIRE number: {amount} in today’s euros (annual retirement spending × {multiple}).',
   'inputs.withdrawal.strategyLabel': 'Withdrawal strategy',
   'inputs.withdrawal.strategyHelp':
     'Constant spending: each year you withdraw what you need, adjusted for inflation. Guardrails: in years when you withdraw too much compared with your wealth you cut spending, to protect the plan in bad markets.',

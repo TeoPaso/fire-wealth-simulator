@@ -16,5 +16,5 @@ export { Stat, type StatProps, type StatTone } from './Stat';
 export { Switch, type SwitchProps } from './Switch';
 export { Tabs, type TabItem, type TabsProps } from './Tabs';
 export { TextField, type TextFieldProps } from './TextField';
-export { SERIES_COLORS, THEME_COLORS, seriesVar, type SeriesName } from './colors';
+export { CATEGORICAL_COLORS, SERIES_COLORS, THEME_COLORS, seriesVar, type SeriesName } from './colors';
 export { cn } from './cn';
